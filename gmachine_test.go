@@ -35,9 +35,7 @@ func TestNew(t *testing.T) {
 func TestHALT(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.RunProgram([]gmachine.Word{
-		gmachine.OpHALT,
-	})
+	err := g.AssembleAndRun("halt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,9 +49,7 @@ func TestHALT(t *testing.T) {
 func TestNOOP(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.RunProgram([]gmachine.Word{
-		gmachine.OpNOOP,
-	})
+	err := g.AssembleAndRun("noop;assert p 2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,6 +178,18 @@ func TestFib(t *testing.T) {
 	var want gmachine.Word = 89
 	got := g.A
 	if want != got {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestAssembly(t *testing.T) {
+	t.Parallel()
+	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT}
+	got, err := gmachine.Assemble("NOOP; halt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
 	}
 }

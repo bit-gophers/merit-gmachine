@@ -1,7 +1,10 @@
 // Package gmachine implements a simple virtual CPU, known as the G-machine.
 package gmachine
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // DefaultMemSize is the number of 64-bit words of memory which will be
 // allocated to a new G-machine by default.
@@ -37,7 +40,7 @@ func New() *Machine {
 
 func (g *Machine) Run() error {
 	for {
-		// fmt.Printf("P: %d NextOp: %d A: %d I: %d X: %d Y: %d\n", g.P, g.Memory[g.P], g.A, g.I, g.X, g.Y)
+		fmt.Printf("P: %d NextOp: %d A: %d I: %d X: %d Y: %d\n", g.P, g.Memory[g.P], g.A, g.I, g.X, g.Y)
 		op := g.Fetch()
 		switch op {
 		case OpHALT:
@@ -83,4 +86,37 @@ func (g *Machine) RunProgram(data []Word) error {
 	copy(g.Memory, data)
 	g.P = 0
 	return g.Run()
+}
+
+func (g *Machine) AssembleAndRun(program string) error {
+	commands, err := Assemble(program)
+	if err != nil {
+		return err
+	}
+	return g.RunProgram(commands)
+}
+
+// Map of assembly commands to OP codes
+var commands = map[string]Word{
+	"noop": OpNOOP,
+	"halt": OpHALT,
+}
+
+func Assemble(s string) (program []Word, err error) {
+	// Normalize input string
+	s = strings.ToLower(s)
+	// Split into tokens
+	tokens := strings.Split(s, ";")
+	// Iterate over tokens
+	for _, token := range tokens {
+		// Trim space around token
+		token = strings.TrimSpace(token)
+		// Convert each token to op commands
+		command, ok := commands[token]
+		if !ok {
+			return nil, fmt.Errorf("unknown command %q", token)
+		}
+		program = append(program, command)
+	}
+	return program, nil
 }
