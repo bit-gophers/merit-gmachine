@@ -2,7 +2,11 @@
 package gmachine
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 )
 
@@ -88,35 +92,132 @@ func (g *Machine) RunProgram(data []Word) error {
 	return g.Run()
 }
 
-func (g *Machine) AssembleAndRun(program string) error {
-	commands, err := Assemble(program)
-	if err != nil {
-		return err
-	}
-	return g.RunProgram(commands)
-}
-
 // Map of assembly commands to OP codes
 var commands = map[string]Word{
 	"noop": OpNOOP,
 	"halt": OpHALT,
+	"inca": OpINCA,
+	"seta": OpSETA,
+	"deca": OpDECA,
 }
 
-func Assemble(s string) (program []Word, err error) {
-	// Normalize input string
-	s = strings.ToLower(s)
-	// Split into tokens
-	tokens := strings.Split(s, ";")
-	// Iterate over tokens
-	for _, token := range tokens {
-		// Trim space around token
-		token = strings.TrimSpace(token)
-		// Convert each token to op commands
-		command, ok := commands[token]
-		if !ok {
-			return nil, fmt.Errorf("unknown command %q", token)
-		}
-		program = append(program, command)
+// dropCR drops a terminal \r from the data.
+func dropCR(data []byte) []byte {
+	if len(data) > 0 && data[len(data)-1] == '\r' {
+		return data[0 : len(data)-1]
 	}
-	return program, nil
+	return data
+}
+
+func normalize(s []byte) []byte {
+	rawToken := bytes.TrimSpace(s)
+	rawToken = bytes.ToLower(s)
+	return rawToken
+}
+
+// scanLine is borrowed from bufio/scan with an added token handling splitting on
+// ; as well as new lines.
+func scanLine(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		// We have a full newline-terminated line.
+		return i + 1, normalize(dropCR(data[0:i])), nil
+	}
+	if i := bytes.IndexByte(data, ';'); i >= 0 {
+		return i + 1, normalize(data[0:i]), nil
+	}
+	if i := bytes.IndexByte(data, ' '); i > 0 {
+		return i + 1, normalize(data[0:i]), nil
+	}
+	// If we're at EOF, we have a final, non-terminated line. Return it.
+	if atEOF {
+		return len(data), normalize(dropCR(data)), nil
+	}
+	// Request more data.
+	return 0, nil, nil
+}
+
+type Token struct {
+	Raw    string
+	Opcode Word
+}
+
+func Tokenize(reader io.Reader) ([]Token, error) {
+	scanner := bufio.NewScanner(reader)
+	scanner.Split(scanLine)
+	var tokens []Token
+	for scanner.Scan() {
+		tk := scanner.Text()
+		// Trim space and lowercase Token
+		tokens = append(tokens, Token{Raw: tk})
+	}
+	if scanner.Err() != nil {
+		return nil, scanner.Err()
+	}
+	return tokens, nil
+}
+
+type assembler struct {
+	tks  []Token
+	isns []Word
+	err  error
+}
+
+type assemblerState func(s *assembler) assemblerState
+
+func wantInstruction(s *assembler) assemblerState {
+	if len(s.tks) == 0 {
+		return nil
+	}
+	t := s.tks[0]
+	command, ok := commands[t.Raw]
+	if !ok {
+		s.err = fmt.Errorf("unknown command %q", t.Raw)
+		return nil
+	}
+	s.tks = s.tks[1:]
+	s.isns = append(s.isns, command)
+	return wantInstruction
+}
+
+func Assemble(reader io.Reader) (program []Word, err error) {
+	tokens, err := Tokenize(reader)
+	if err != nil {
+		return nil, err
+	}
+	s := &assembler{tks: tokens}
+	for state := wantInstruction; state != nil; {
+		state = state(s)
+	}
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.isns, nil
+}
+
+func AssembleFromFile(filename string) ([]Word, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return Assemble(file)
+}
+
+func (g *Machine) AssembleAndRunFromString(program string) error {
+	words, err := Assemble(strings.NewReader(program))
+	if err != nil {
+		return err
+	}
+	return g.RunProgram(words)
+}
+
+func (g *Machine) AssembleAndRunFromFile(filename string) error {
+	program, err := AssembleFromFile(filename)
+	if err != nil {
+		return err
+	}
+	return g.RunProgram(program)
 }

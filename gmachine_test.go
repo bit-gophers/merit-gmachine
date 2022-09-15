@@ -1,6 +1,7 @@
 package gmachine_test
 
 import (
+	"strings"
 	"testing"
 
 	"gmachine"
@@ -35,7 +36,7 @@ func TestNew(t *testing.T) {
 func TestHALT(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRun("halt")
+	err := g.AssembleAndRunFromString("halt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestHALT(t *testing.T) {
 func TestNOOP(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRun("noop;assert p 2")
+	err := g.AssembleAndRunFromString("noop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,9 +64,7 @@ func TestNOOP(t *testing.T) {
 func TestINCA(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.RunProgram([]gmachine.Word{
-		gmachine.OpINCA,
-	})
+	err := g.AssembleAndRunFromString("inca")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,11 +78,7 @@ func TestINCA(t *testing.T) {
 func TestDECA(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.RunProgram([]gmachine.Word{
-		gmachine.OpSETA,
-		2,
-		gmachine.OpDECA,
-	})
+	err := g.AssembleAndRunFromString("SETA 2;DECA")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,14 +177,62 @@ func TestFib(t *testing.T) {
 	}
 }
 
-func TestAssembly(t *testing.T) {
+func TestTokenization(t *testing.T) {
 	t.Parallel()
-	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT}
-	got, err := gmachine.Assemble("NOOP; halt")
+	want := []gmachine.Token{{Raw: "noop"}, {Raw: "halt"}, {Raw: "noop"}}
+	got, err := gmachine.Tokenize(strings.NewReader("NOOP; halt ; NOOP "))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestAssembly(t *testing.T) {
+	t.Parallel()
+	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT}
+	got, err := gmachine.Assemble(strings.NewReader("NOOP; halt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestAssembleAndRunFromReader(t *testing.T) {
+	t.Parallel()
+	machine := gmachine.New()
+	if err := machine.AssembleAndRunFromString("NOOP; halt"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAssemblingAndRunFromFile(t *testing.T) {
+	t.Parallel()
+	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT}
+	got, err := gmachine.AssembleFromFile("testdata/halting_program.g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestAssemblingAndRunWithNonExistentFile(t *testing.T) {
+	t.Parallel()
+	machine := gmachine.New()
+	if err := machine.AssembleAndRunFromFile("testdata/non-existent-program.g"); err == nil {
+		t.Fatal("expected an error for invalid file")
+	}
+}
+
+func TestAssemblingAndRunWithBadFile(t *testing.T) {
+	t.Parallel()
+	machine := gmachine.New()
+	if err := machine.AssembleAndRunFromFile("testdata/invalid_program.g"); err == nil {
+		t.Fatal("expected an error for bad program file")
 	}
 }
