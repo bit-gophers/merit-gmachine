@@ -130,28 +130,6 @@ func TestSETA(t *testing.T) {
 	}
 }
 
-// 1, 2, 3, 5, 8...
-func fib(n int) int {
-	result := 1
-	prev := 0
-	for i := 1; i <= n; i++ {
-		tmp := result + prev
-		prev = result
-		result = tmp
-	}
-	_ = prev
-	return result
-}
-
-func TestFib2(t *testing.T) {
-	t.Parallel()
-	want := 8
-	got := fib(5)
-	if want != got {
-		t.Error(cmp.Diff(want, got))
-	}
-}
-
 func TestFib(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
@@ -173,18 +151,6 @@ func TestFib(t *testing.T) {
 	var want gmachine.Word = 89
 	got := g.A
 	if want != got {
-		t.Error(cmp.Diff(want, got))
-	}
-}
-
-func TestTokenization(t *testing.T) {
-	t.Parallel()
-	want := []gmachine.Token{{Raw: "noop"}, {Raw: "halt"}, {Raw: "noop"}}
-	got, err := gmachine.Tokenize(strings.NewReader("NOOP; halt ; NOOP "))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
 	}
 }
@@ -234,5 +200,34 @@ func TestAssemblingAndRunWithBadFile(t *testing.T) {
 	machine := gmachine.New()
 	if err := machine.AssembleAndRunFromFile("testdata/invalid_program.g"); err == nil {
 		t.Fatal("expected an error for bad program file")
+	}
+}
+
+func TestTokenize(t *testing.T) {
+	t.Parallel()
+	want := []gmachine.Token{
+		{
+			Kind:  gmachine.TokenInstruction,
+			Value: gmachine.OpNOOP,
+		},
+		{
+			Kind:  gmachine.TokenInstruction,
+			Value: gmachine.OpHALT,
+		},
+	}
+	got, err := gmachine.Tokenize([]rune("NOOP HALT"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestTokenizeReturnsErrorForBogusInstruction(t *testing.T) {
+	t.Parallel()
+	_, err := gmachine.Tokenize([]rune("BOGUS"))
+	if err == nil {
+		t.Fatal("want error for bogus instruction, got nil")
 	}
 }

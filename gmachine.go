@@ -2,8 +2,6 @@
 package gmachine
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +13,7 @@ import (
 const DefaultMemSize = 1024
 
 const (
-	OpHALT = iota
+	OpHALT = iota + 1
 	OpNOOP
 	OpINCA
 	OpDECA
@@ -27,6 +25,10 @@ const (
 	OpADXY
 	OpMVAX
 	OpMVYA
+
+	TokenInstruction = iota
+
+	eof rune = 0
 )
 
 type Word uint64
@@ -44,7 +46,7 @@ func New() *Machine {
 
 func (g *Machine) Run() error {
 	for {
-		fmt.Printf("P: %d NextOp: %d A: %d I: %d X: %d Y: %d\n", g.P, g.Memory[g.P], g.A, g.I, g.X, g.Y)
+		// fmt.Printf("P: %d NextOp: %d A: %d I: %d X: %d Y: %d\n", g.P, g.Memory[g.P], g.A, g.I, g.X, g.Y)
 		op := g.Fetch()
 		switch op {
 		case OpHALT:
@@ -94,107 +96,138 @@ func (g *Machine) RunProgram(data []Word) error {
 
 // Map of assembly commands to OP codes
 var commands = map[string]Word{
-	"noop": OpNOOP,
-	"halt": OpHALT,
-	"inca": OpINCA,
-	"seta": OpSETA,
-	"deca": OpDECA,
-}
-
-// dropCR drops a terminal \r from the data.
-func dropCR(data []byte) []byte {
-	if len(data) > 0 && data[len(data)-1] == '\r' {
-		return data[0 : len(data)-1]
-	}
-	return data
-}
-
-func normalize(s []byte) []byte {
-	rawToken := bytes.TrimSpace(s)
-	rawToken = bytes.ToLower(s)
-	return rawToken
-}
-
-// scanLine is borrowed from bufio/scan with an added token handling splitting on
-// ; as well as new lines.
-func scanLine(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-	if i := bytes.IndexByte(data, '\n'); i >= 0 {
-		// We have a full newline-terminated line.
-		return i + 1, normalize(dropCR(data[0:i])), nil
-	}
-	if i := bytes.IndexByte(data, ';'); i >= 0 {
-		return i + 1, normalize(data[0:i]), nil
-	}
-	if i := bytes.IndexByte(data, ' '); i > 0 {
-		return i + 1, normalize(data[0:i]), nil
-	}
-	// If we're at EOF, we have a final, non-terminated line. Return it.
-	if atEOF {
-		return len(data), normalize(dropCR(data)), nil
-	}
-	// Request more data.
-	return 0, nil, nil
+	"NOOP": OpNOOP,
+	"HALT": OpHALT,
+	"INCA": OpINCA,
+	"SETA": OpSETA,
+	"DECA": OpDECA,
 }
 
 type Token struct {
-	Raw    string
-	Opcode Word
+	Kind  int
+	Value Word
 }
 
-func Tokenize(reader io.Reader) ([]Token, error) {
-	scanner := bufio.NewScanner(reader)
-	scanner.Split(scanLine)
-	var tokens []Token
-	for scanner.Scan() {
-		tk := scanner.Text()
-		// Trim space and lowercase Token
-		tokens = append(tokens, Token{Raw: tk})
+func Tokenize(data []rune) ([]Token, error) {
+	t := new(tokenizer)
+	t.debug = os.Stdout
+	t.input = data
+	for state := wantInstruction; state != nil; {
+		state = state(t)
+		if t.err != nil {
+			return nil, t.err
+		}
 	}
-	if scanner.Err() != nil {
-		return nil, scanner.Err()
-	}
-	return tokens, nil
+	return t.result, nil
 }
 
-type assembler struct {
-	tks  []Token
-	isns []Word
-	err  error
+type tokenizer struct {
+	debug      io.Writer
+	input      []rune
+	start, pos int
+	result     []Token
+	err        error
 }
 
-type assemblerState func(s *assembler) assemblerState
-
-func wantInstruction(s *assembler) assemblerState {
-	if len(s.tks) == 0 {
-		return nil
+func (t *tokenizer) next() rune {
+	next := t.peek()
+	if next != eof {
+		t.pos++
 	}
-	t := s.tks[0]
-	command, ok := commands[t.Raw]
+	return next
+}
+
+func (t *tokenizer) peek() rune {
+	if t.pos >= len(t.input) {
+		return eof
+	}
+	next := t.input[t.pos]
+	return next
+}
+
+func (t *tokenizer) skip() {
+	t.start = t.pos
+}
+
+func (t *tokenizer) backup() {
+	t.pos--
+}
+
+func (t *tokenizer) emit() {
+	rawToken := string(t.input[t.start:t.pos])
+	t.log("emit", rawToken)
+	v, ok := commands[rawToken]
 	if !ok {
-		s.err = fmt.Errorf("unknown command %q", t.Raw)
-		return nil
+		t.err = fmt.Errorf("unknown instruction %q", rawToken)
+		return
 	}
-	s.tks = s.tks[1:]
-	s.isns = append(s.isns, command)
-	return wantInstruction
+	token := Token{
+		Kind:  TokenInstruction,
+		Value: v,
+	}
+	t.result = append(t.result, token)
+	t.skip()
 }
 
-func Assemble(reader io.Reader) (program []Word, err error) {
-	tokens, err := Tokenize(reader)
+func (t *tokenizer) log(args ...interface{}) {
+	fmt.Fprintln(t.debug, args...)
+}
+
+func (t *tokenizer) logState(stateName string) {
+	next := "EOF"
+	if t.pos < len(t.input) {
+		next = string(t.input[t.pos])
+	}
+	t.log(fmt.Sprintf("%s: [%s] -> %s",
+		stateName,
+		string(t.input[t.start:t.pos]),
+		next,
+	))
+}
+
+type stateFunc func(*tokenizer) stateFunc
+
+func wantInstruction(t *tokenizer) stateFunc {
+	for {
+		t.logState("wantInstruction")
+		switch t.next() {
+		case ' ':
+			t.skip()
+		default:
+			return inInstruction
+		}
+	}
+}
+
+func inInstruction(t *tokenizer) stateFunc {
+	for {
+		t.logState("inInstruction")
+		switch t.next() {
+		case ' ':
+			t.backup()
+			t.emit()
+			return wantInstruction
+		case eof:
+			t.emit()
+			return nil
+		}
+	}
+}
+
+func Assemble(input io.Reader) ([]Word, error) {
+	data, err := io.ReadAll(input)
 	if err != nil {
 		return nil, err
 	}
-	s := &assembler{tks: tokens}
-	for state := wantInstruction; state != nil; {
-		state = state(s)
+	var program []Word
+	tokens, err := Tokenize([]rune(string(data)))
+	if err != nil {
+		return nil, err
 	}
-	if s.err != nil {
-		return nil, s.err
+	for _, t := range tokens {
+		program = append(program, t.Value)
 	}
-	return s.isns, nil
+	return program, nil
 }
 
 func AssembleFromFile(filename string) ([]Word, error) {
