@@ -92,12 +92,7 @@ func TestDECA(t *testing.T) {
 func TestSubtract2From3Gives1(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.RunProgram([]gmachine.Word{
-		gmachine.OpSETA,
-		3,
-		gmachine.OpDECA,
-		gmachine.OpDECA,
-	})
+	err := g.AssembleAndRunFromFile("testdata/subtract2from3.g")
 	if err != nil {
 		t.Fatal(err)
 	}

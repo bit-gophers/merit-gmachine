@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -27,6 +28,7 @@ const (
 	OpMVYA
 
 	TokenInstruction = iota
+	TokenArgument
 
 	eof rune = 0
 )
@@ -94,8 +96,8 @@ func (g *Machine) RunProgram(data []Word) error {
 	return g.Run()
 }
 
-// Map of assembly commands to OP codes
-var commands = map[string]Word{
+// Map of assembly instructions to OP codes
+var instructions = map[string]Word{
 	"NOOP": OpNOOP,
 	"HALT": OpHALT,
 	"INCA": OpINCA,
@@ -153,20 +155,32 @@ func (t *tokenizer) backup() {
 	t.pos--
 }
 
-func (t *tokenizer) emit() {
+func (t *tokenizer) emit() stateFunc {
 	rawToken := string(t.input[t.start:t.pos])
 	t.log("emit", rawToken)
-	v, ok := commands[rawToken]
+	caseInsensitiveToken := strings.ToUpper(rawToken)
+	v, ok := instructions[caseInsensitiveToken]
+	tokenKind := TokenInstruction
 	if !ok {
-		t.err = fmt.Errorf("unknown instruction %q", rawToken)
-		return
+		tokenKind = TokenArgument
+		converted, err := strconv.Atoi(caseInsensitiveToken)
+		if err != nil {
+			t.err = err
+			return nil
+		}
+		v = Word(converted)
 	}
 	token := Token{
-		Kind:  TokenInstruction,
+		Kind:  tokenKind,
 		Value: v,
 	}
 	t.result = append(t.result, token)
 	t.skip()
+	switch v {
+	case OpSETA, OpSETI:
+		return wantValue
+	}
+	return wantInstruction
 }
 
 func (t *tokenizer) log(args ...interface{}) {
@@ -191,8 +205,10 @@ func wantInstruction(t *tokenizer) stateFunc {
 	for {
 		t.logState("wantInstruction")
 		switch t.next() {
-		case ' ':
+		case ' ', ';', '\n':
 			t.skip()
+		case eof:
+			return nil
 		default:
 			return inInstruction
 		}
@@ -203,13 +219,38 @@ func inInstruction(t *tokenizer) stateFunc {
 	for {
 		t.logState("inInstruction")
 		switch t.next() {
-		case ' ':
+		case ' ', ';', '\n':
 			t.backup()
-			t.emit()
-			return wantInstruction
+			return t.emit()
 		case eof:
 			t.emit()
 			return nil
+		}
+	}
+}
+
+func inValue(t *tokenizer) stateFunc {
+	for {
+		t.logState("inValue")
+		switch t.next() {
+		case ' ', ';', '\n':
+			t.backup()
+			return t.emit()
+		case eof:
+			t.emit()
+			return nil
+		}
+	}
+}
+
+func wantValue(t *tokenizer) stateFunc {
+	for {
+		t.logState("wantValue")
+		switch t.next() {
+		case ' ':
+			t.skip()
+		default:
+			return inValue
 		}
 	}
 }
@@ -227,6 +268,7 @@ func Assemble(input io.Reader) ([]Word, error) {
 	for _, t := range tokens {
 		program = append(program, t.Value)
 	}
+	program = append(program, OpHALT)
 	return program, nil
 }
 
