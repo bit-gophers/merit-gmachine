@@ -152,13 +152,6 @@ type tokenizer struct {
 	err              error
 }
 
-func (t *tokenizer) lastToken() Token {
-	if len(t.result) == 0 {
-		return Token{}
-	}
-	return t.result[len(t.result)-1]
-}
-
 func (t *tokenizer) next() rune {
 	next := t.peek()
 	if next != eof {
@@ -277,7 +270,17 @@ func Assemble(input io.Reader) ([]Word, error) {
 	if err != nil {
 		return nil, err
 	}
+	var argRequired = false
 	for _, t := range tokens {
+		if t.Kind == TokenInstruction && argRequired {
+			return nil, fmt.Errorf("line %d: unexpected instruction %q", t.Line, t.RawToken)
+		}
+		switch t.RawToken {
+		case "SETA", "SETI":
+			argRequired = true
+		default:
+			argRequired = false
+		}
 		program = append(program, t.Value)
 	}
 	program = append(program, OpHALT)
