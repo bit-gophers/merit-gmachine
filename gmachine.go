@@ -33,6 +33,11 @@ const (
 	eof rune = 0
 )
 
+var kind = map[int]string{
+	TokenInstruction: "instruction",
+	TokenArgument:    "argument",
+}
+
 type Word uint64
 
 type Machine struct {
@@ -98,23 +103,38 @@ func (g *Machine) RunProgram(data []Word) error {
 
 // Map of assembly instructions to OP codes
 var instructions = map[string]Word{
-	"NOOP": OpNOOP,
+	"ADXY": OpADXY,
+	"DECA": OpDECA,
+	"DECI": OpDECI,
 	"HALT": OpHALT,
 	"INCA": OpINCA,
+	"JINZ": OpJINZ,
+	"MVAX": OpMVAX,
+	"MVAY": OpMVAY,
+	"MVYA": OpMVYA,
+	"NOOP": OpNOOP,
 	"SETA": OpSETA,
-	"DECA": OpDECA,
+	"SETI": OpSETI,
 }
 
 type Token struct {
-	Kind  int
-	Value Word
+	Kind     int
+	Value    Word
+	RawToken string
+	Line     int
+	Col      int
+}
+
+func (t Token) String() string {
+	return fmt.Sprintf("%q (%d) %s", t.RawToken, t.Value, kind[t.Kind])
 }
 
 func Tokenize(data []rune) ([]Token, error) {
 	t := new(tokenizer)
+	t.line = 1
 	t.debug = os.Stdout
 	t.input = data
-	for state := wantInstruction; state != nil; {
+	for state := wantToken; state != nil; {
 		state = state(t)
 		if t.err != nil {
 			return nil, t.err
@@ -124,11 +144,19 @@ func Tokenize(data []rune) ([]Token, error) {
 }
 
 type tokenizer struct {
-	debug      io.Writer
-	input      []rune
-	start, pos int
-	result     []Token
-	err        error
+	sourceName       string
+	debug            io.Writer
+	input            []rune
+	start, pos, line int
+	result           []Token
+	err              error
+}
+
+func (t *tokenizer) lastToken() Token {
+	if len(t.result) == 0 {
+		return Token{}
+	}
+	return t.result[len(t.result)-1]
 }
 
 func (t *tokenizer) next() rune {
@@ -155,32 +183,34 @@ func (t *tokenizer) backup() {
 	t.pos--
 }
 
-func (t *tokenizer) emit() stateFunc {
-	rawToken := string(t.input[t.start:t.pos])
-	t.log("emit", rawToken)
-	caseInsensitiveToken := strings.ToUpper(rawToken)
-	v, ok := instructions[caseInsensitiveToken]
+func newToken(rawToken []rune) (Token, error) {
+	caseInsensitiveToken := strings.ToUpper(string(rawToken))
 	tokenKind := TokenInstruction
+	value, ok := instructions[caseInsensitiveToken]
 	if !ok {
 		tokenKind = TokenArgument
 		converted, err := strconv.Atoi(caseInsensitiveToken)
 		if err != nil {
-			t.err = err
-			return nil
+			return Token{}, fmt.Errorf("unknown instruction %q", string(rawToken))
 		}
-		v = Word(converted)
+		value = Word(converted)
 	}
-	token := Token{
-		Kind:  tokenKind,
-		Value: v,
+	return Token{
+		Kind:     tokenKind,
+		Value:    value,
+		RawToken: caseInsensitiveToken,
+	}, nil
+}
+
+func (t *tokenizer) emit() {
+	token, err := newToken(t.input[t.start:t.pos])
+	if err != nil {
+		t.err = fmt.Errorf("%d: syntax error: %w", t.line, err)
 	}
+	token.Line = t.line
+	t.log("emit", token)
 	t.result = append(t.result, token)
 	t.skip()
-	switch v {
-	case OpSETA, OpSETI:
-		return wantValue
-	}
-	return wantInstruction
 }
 
 func (t *tokenizer) log(args ...interface{}) {
@@ -201,56 +231,38 @@ func (t *tokenizer) logState(stateName string) {
 
 type stateFunc func(*tokenizer) stateFunc
 
-func wantInstruction(t *tokenizer) stateFunc {
+func wantToken(t *tokenizer) stateFunc {
 	for {
-		t.logState("wantInstruction")
+		t.logState("wantToken")
 		switch t.next() {
-		case ' ', ';', '\n':
+		case '\n':
+			t.line++
+			t.skip()
+		case ' ', ';':
 			t.skip()
 		case eof:
 			return nil
 		default:
-			return inInstruction
+			return inToken
 		}
 	}
 }
 
-func inInstruction(t *tokenizer) stateFunc {
+func inToken(t *tokenizer) stateFunc {
 	for {
-		t.logState("inInstruction")
+		t.logState("inToken")
 		switch t.next() {
-		case ' ', ';', '\n':
+		case '\n':
 			t.backup()
-			return t.emit()
+			t.emit()
+			return wantToken
+		case ' ', ';':
+			t.backup()
+			t.emit()
+			return wantToken
 		case eof:
 			t.emit()
 			return nil
-		}
-	}
-}
-
-func inValue(t *tokenizer) stateFunc {
-	for {
-		t.logState("inValue")
-		switch t.next() {
-		case ' ', ';', '\n':
-			t.backup()
-			return t.emit()
-		case eof:
-			t.emit()
-			return nil
-		}
-	}
-}
-
-func wantValue(t *tokenizer) stateFunc {
-	for {
-		t.logState("wantValue")
-		switch t.next() {
-		case ' ':
-			t.skip()
-		default:
-			return inValue
 		}
 	}
 }
@@ -278,7 +290,11 @@ func AssembleFromFile(filename string) ([]Word, error) {
 		return nil, err
 	}
 	defer file.Close()
-	return Assemble(file)
+	program, err := Assemble(file)
+	if err != nil {
+		return nil, fmt.Errorf("%s:%w", filename, err)
+	}
+	return program, nil
 }
 
 func (g *Machine) AssembleAndRunFromString(program string) error {
