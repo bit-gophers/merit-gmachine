@@ -1,10 +1,13 @@
 package gmachine_test
 
 import (
+	"fmt"
+	"math"
 	"strings"
 	"testing"
+	"testing/iotest"
 
-	"gmachine"
+	"github.com/bit-gophers/merit-gmachine"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -252,5 +255,24 @@ func TestAssemblyError(t *testing.T) {
 	_, err := gmachine.AssembleFromFile("testdata/assembly_error.g")
 	if err == nil {
 		t.Fatal("Should have got error from file")
+	}
+}
+
+func TestUnknownOpCodeReturnsError(t *testing.T) {
+	t.Parallel()
+	m := gmachine.New()
+	m.P = math.MaxUint64
+	err := m.RunProgram([]gmachine.Word{math.MaxUint64})
+	if err == nil {
+		t.Error("no error")
+	}
+}
+
+func TestAssembleErrorReaderReturnsError(t *testing.T) {
+	t.Parallel()
+	reader := iotest.ErrReader(fmt.Errorf("some error"))
+	_, err := gmachine.Assemble(reader)
+	if err == nil {
+		t.Error("no error")
 	}
 }

@@ -203,7 +203,6 @@ func (t *tokenizer) emit() {
 	token.Line = t.line
 	t.log("emit", token)
 	t.result = append(t.result, token)
-	t.skip()
 }
 
 func (t *tokenizer) log(args ...interface{}) {
