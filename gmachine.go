@@ -132,7 +132,13 @@ func (t Token) String() string {
 func Tokenize(data []rune) ([]Token, error) {
 	t := new(tokenizer)
 	t.line = 1
-	t.debug = os.Stdout
+
+	if os.Getenv("TOKENIZE_LOGS") != "" {
+		t.debug = os.Stderr
+	} else {
+		t.debug = io.Discard
+	}
+
 	t.input = data
 	for state := wantToken; state != nil; {
 		state = state(t)

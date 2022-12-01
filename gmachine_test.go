@@ -187,6 +187,20 @@ func TestAssemblingAndRunWithBadFile(t *testing.T) {
 	}
 }
 
+func FuzzTokenize(f *testing.F) {
+	f.Add("NOOP HALT SETA 5")
+	f.Fuzz(func(t *testing.T, data string) {
+
+		//machine := gmachine.New()
+		//_ = machine.AssembleAndRunFromString(data)
+
+		got, err := gmachine.Tokenize([]rune(data))
+		if len(got) == 0 && err == nil && data != " " && data != "" {
+			t.Error("expected at least one token if no error is produced")
+		}
+	})
+}
+
 func TestTokenize(t *testing.T) {
 	t.Parallel()
 	want := []gmachine.Token{
