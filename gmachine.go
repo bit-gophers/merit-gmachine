@@ -250,11 +250,7 @@ func inToken(t *tokenizer) stateFunc {
 	for {
 		t.logState("inToken")
 		switch t.next() {
-		case '\n':
-			t.backup()
-			t.emit()
-			return wantToken
-		case ' ', ';':
+		case '\n', ' ', ';':
 			t.backup()
 			t.emit()
 			return wantToken
