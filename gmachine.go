@@ -26,6 +26,7 @@ const (
 	OpADXY
 	OpMVAX
 	OpMVYA
+	OpOUTA
 
 	TokenInstruction = iota
 	TokenArgument
@@ -43,12 +44,20 @@ type Word uint64
 type Machine struct {
 	Memory        []Word
 	A, I, P, X, Y Word
+	out           io.Writer
 }
 
 func New() *Machine {
 	return &Machine{
 		Memory: make([]Word, DefaultMemSize),
+		out:    os.Stdout,
 	}
+}
+
+func NewWithOutput(out io.Writer) *Machine {
+	g := New()
+	g.out = out
+	return g
 }
 
 func (g *Machine) Run() error {
@@ -83,6 +92,8 @@ func (g *Machine) Run() error {
 			g.X = g.A
 		case OpMVYA:
 			g.A = g.Y
+		case OpOUTA:
+			fmt.Fprintf(g.out, "%c", g.A)
 		default:
 			return fmt.Errorf("unknown opcode %d", op)
 		}
@@ -113,6 +124,7 @@ var instructions = map[string]Word{
 	"MVAY": OpMVAY,
 	"MVYA": OpMVYA,
 	"NOOP": OpNOOP,
+	"OUTA": OpOUTA,
 	"SETA": OpSETA,
 	"SETI": OpSETI,
 }
@@ -271,7 +283,7 @@ func Assemble(input io.Reader) ([]Word, error) {
 	if err != nil {
 		return nil, err
 	}
-	var argRequired = false
+	argRequired := false
 	for _, t := range tokens {
 		if t.Kind == TokenInstruction && argRequired {
 			return nil, fmt.Errorf("line %d: unexpected instruction %q", t.Line, t.RawToken)

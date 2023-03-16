@@ -1,13 +1,14 @@
 package gmachine_test
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"strings"
 	"testing"
 	"testing/iotest"
 
-	"github.com/bit-gophers/merit-gmachine"
+	gmachine "github.com/bit-gophers/merit-gmachine"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -190,7 +191,6 @@ func TestAssemblingAndRunWithBadFile(t *testing.T) {
 func FuzzTokenize(f *testing.F) {
 	f.Add("NOOP HALT SETA 5")
 	f.Fuzz(func(t *testing.T, data string) {
-
 		//machine := gmachine.New()
 		//_ = machine.AssembleAndRunFromString(data)
 
@@ -288,5 +288,20 @@ func TestAssembleErrorReaderReturnsError(t *testing.T) {
 	_, err := gmachine.Assemble(reader)
 	if err == nil {
 		t.Error("no error")
+	}
+}
+
+func TestPrintA(t *testing.T) {
+	t.Parallel()
+	buf := new(bytes.Buffer)
+	g := gmachine.NewWithOutput(buf)
+	err := g.AssembleAndRunFromFile("testdata/print_char.g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "A"
+	got := buf.String()
+	if want != got {
+		t.Errorf("want %q, got %q", want, got)
 	}
 }
