@@ -305,3 +305,18 @@ func TestPrintA(t *testing.T) {
 		t.Errorf("want %q, got %q", want, got)
 	}
 }
+
+func TestPrintHelloWorld(t *testing.T) {
+	t.Parallel()
+	buf := new(bytes.Buffer)
+	g := gmachine.NewWithOutput(buf)
+	err := g.AssembleAndRunFromFile("testdata/hello_world.g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Hello World"
+	got := buf.String()
+	if want != got {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}

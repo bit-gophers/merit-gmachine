@@ -1,4 +1,5 @@
 // data
+JUMP 13
 72
 101
 108
@@ -12,11 +13,10 @@
 100
 
 // code
-SETI 11
-SETX 0
+SETI 2
 // load A with value at addr X
-LDAX
+LDAI 0
 OUTA
-INCX
-DECI
-JINZ 11
+INCI
+CMPI 13
+JNEQ 15

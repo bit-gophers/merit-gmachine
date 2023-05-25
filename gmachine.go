@@ -27,9 +27,15 @@ const (
 	OpMVAX
 	OpMVYA
 	OpOUTA
+	OpJUMP
+	OpINCI
+	OpLDAI
+	OpCMPI
+	OpJNEQ
 
 	TokenInstruction = iota
 	TokenArgument
+	TokenComment
 
 	eof rune = 0
 )
@@ -44,6 +50,7 @@ type Word uint64
 type Machine struct {
 	Memory        []Word
 	A, I, P, X, Y Word
+	Z             bool
 	out           io.Writer
 }
 
@@ -94,6 +101,18 @@ func (g *Machine) Run() error {
 			g.A = g.Y
 		case OpOUTA:
 			fmt.Fprintf(g.out, "%c", g.A)
+		case OpJUMP:
+			g.P = g.Fetch()
+		case OpINCI:
+			g.I++
+		case OpLDAI:
+			g.A = g.Memory[g.I+g.Fetch()]
+		case OpCMPI:
+			g.Z = g.I == g.Fetch()
+		case OpJNEQ:
+			if !g.Z {
+				g.P = g.Fetch()
+			}
 		default:
 			return fmt.Errorf("unknown opcode %d", op)
 		}
@@ -127,6 +146,11 @@ var instructions = map[string]Word{
 	"OUTA": OpOUTA,
 	"SETA": OpSETA,
 	"SETI": OpSETI,
+	"JUMP": OpJUMP,
+	"INCI": OpINCI,
+	"LDAI": OpLDAI,
+	"CMPI": OpCMPI,
+	"JNEQ": OpJNEQ,
 }
 
 type Token struct {
@@ -195,7 +219,15 @@ func (t *tokenizer) backup() {
 }
 
 func newToken(rawToken []rune) (Token, error) {
-	caseInsensitiveToken := strings.ToUpper(string(rawToken))
+	stringToken := string(rawToken)
+	if strings.HasPrefix(stringToken, "//") {
+		return Token{
+			Kind:     TokenComment,
+			RawToken: stringToken,
+		}, nil
+	}
+
+	caseInsensitiveToken := strings.ToUpper(stringToken)
 	tokenKind := TokenInstruction
 	value, ok := instructions[caseInsensitiveToken]
 	if !ok {
@@ -253,6 +285,7 @@ func wantToken(t *tokenizer) stateFunc {
 		case eof:
 			return nil
 		default:
+			t.backup()
 			return inToken
 		}
 	}
@@ -262,7 +295,28 @@ func inToken(t *tokenizer) stateFunc {
 	for {
 		t.logState("inToken")
 		switch t.next() {
+		case '/':
+			if t.peek() == '/' {
+				return inComment
+			}
+			t.err = fmt.Errorf("%d: syntax error: expected '/' got '%c'", t.line, t.peek())
+			return nil
 		case '\n', ' ', ';':
+			t.backup()
+			t.emit()
+			return wantToken
+		case eof:
+			t.emit()
+			return nil
+		}
+	}
+}
+
+func inComment(t *tokenizer) stateFunc {
+	for {
+		t.logState("inComment")
+		switch t.next() {
+		case '\n':
 			t.backup()
 			t.emit()
 			return wantToken
@@ -285,11 +339,15 @@ func Assemble(input io.Reader) ([]Word, error) {
 	}
 	argRequired := false
 	for _, t := range tokens {
+		if t.Kind == TokenComment {
+			continue
+		}
+
 		if t.Kind == TokenInstruction && argRequired {
 			return nil, fmt.Errorf("line %d: unexpected instruction %q", t.Line, t.RawToken)
 		}
 		switch t.RawToken {
-		case "SETA", "SETI":
+		case "SETA", "SETI", "JUMP":
 			argRequired = true
 		default:
 			argRequired = false
