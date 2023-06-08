@@ -6,5 +6,5 @@ A Go package to emulate a simple computer system called the G-machine.
 
 TODO
 
-Comments
-Rune literals <3
+- Rune literals <3
+- Run output to use the filename as the outputted file name.

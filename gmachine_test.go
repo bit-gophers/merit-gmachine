@@ -54,7 +54,7 @@ func TestHALT(t *testing.T) {
 func TestNOOP(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromString("noop")
+	err := g.AssembleAndRunFromString("noop halt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestNOOP(t *testing.T) {
 func TestINCA(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromString("inca")
+	err := g.AssembleAndRunFromString("inca halt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestINCA(t *testing.T) {
 func TestDECA(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromString("SETA 2;DECA")
+	err := g.AssembleAndRunFromString("SETA 2;DECA;halt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestFib(t *testing.T) {
 
 func TestAssembly(t *testing.T) {
 	t.Parallel()
-	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT, gmachine.OpHALT}
+	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT}
 	got, err := gmachine.Assemble(strings.NewReader("NOOP; halt"))
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +162,7 @@ func TestAssembleAndRunFromReader(t *testing.T) {
 
 func TestAssemblingAndRunFromFile(t *testing.T) {
 	t.Parallel()
-	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT, gmachine.OpHALT}
+	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT}
 	got, err := gmachine.AssembleFromFile("testdata/halting_program.g")
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +194,7 @@ func FuzzTokenize(f *testing.F) {
 		//machine := gmachine.New()
 		//_ = machine.AssembleAndRunFromString(data)
 
-		got, err := gmachine.Tokenize([]rune(data))
+		got, err := gmachine.Tokenize(data)
 		if len(got) == 0 && err == nil && data != " " && data != "" {
 			t.Error("expected at least one token if no error is produced")
 		}
@@ -206,30 +206,30 @@ func TestTokenize(t *testing.T) {
 	want := []gmachine.Token{
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.OpNOOP,
+			Value:    gmachine.Instruction{OpCode: gmachine.OpNOOP},
 			RawToken: "NOOP",
 			Line:     1,
 		},
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.OpSETA,
+			Value:    gmachine.Instruction{OpCode: gmachine.OpSETA, RequiresArgument: true},
 			RawToken: "SETA",
 			Line:     2,
 		},
 		{
 			Kind:     gmachine.TokenArgument,
-			Value:    5,
+			Value:    gmachine.Instruction{OpCode: 5},
 			RawToken: "5",
 			Line:     2,
 		},
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.OpHALT,
+			Value:    gmachine.Instruction{OpCode: gmachine.OpHALT},
 			RawToken: "HALT",
 			Line:     3,
 		},
 	}
-	got, err := gmachine.Tokenize([]rune("NOOP\nSETA 5 \n HALT"))
+	got, err := gmachine.Tokenize("NOOP\nSETA 5 \n HALT\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,10 +240,19 @@ func TestTokenize(t *testing.T) {
 
 func TestTokenizeError(t *testing.T) {
 	t.Parallel()
-	program := []rune("[")
+	program := "["
 	_, err := gmachine.Tokenize(program)
 	if err == nil {
 		t.Error("want error: got nil")
+	}
+}
+
+func TestTokenizeComment(t *testing.T) {
+	t.Parallel()
+	program := "//Hello"
+	_, err := gmachine.Tokenize(program)
+	if err != nil {
+		t.Errorf("want no error: got %v", err)
 	}
 }
 

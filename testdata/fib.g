@@ -6,3 +6,4 @@ mvax
 mvya
 deci
 jinz 3
+halt

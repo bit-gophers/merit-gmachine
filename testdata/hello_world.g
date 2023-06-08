@@ -20,3 +20,5 @@ OUTA
 INCI
 CMPI 13
 JNEQ 15
+halt
+// and we're done looping

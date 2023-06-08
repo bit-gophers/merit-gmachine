@@ -40,6 +40,8 @@ const (
 	eof rune = 0
 )
 
+var instructionsRequiringArguments = map[int]struct{}{}
+
 var kind = map[int]string{
 	TokenInstruction: "instruction",
 	TokenArgument:    "argument",
@@ -132,50 +134,53 @@ func (g *Machine) RunProgram(data []Word) error {
 }
 
 // Map of assembly instructions to OP codes
-var instructions = map[string]Word{
-	"ADXY": OpADXY,
-	"DECA": OpDECA,
-	"DECI": OpDECI,
-	"HALT": OpHALT,
-	"INCA": OpINCA,
-	"JINZ": OpJINZ,
-	"MVAX": OpMVAX,
-	"MVAY": OpMVAY,
-	"MVYA": OpMVYA,
-	"NOOP": OpNOOP,
-	"OUTA": OpOUTA,
-	"SETA": OpSETA,
-	"SETI": OpSETI,
-	"JUMP": OpJUMP,
-	"INCI": OpINCI,
-	"LDAI": OpLDAI,
-	"CMPI": OpCMPI,
-	"JNEQ": OpJNEQ,
+var instructions = map[string]Instruction{
+	"ADXY": {OpCode: OpADXY},
+	"DECA": {OpCode: OpDECA},
+	"DECI": {OpCode: OpDECI},
+	"HALT": {OpCode: OpHALT},
+	"INCA": {OpCode: OpINCA},
+	"JINZ": {OpCode: OpJINZ},
+	"MVAX": {OpCode: OpMVAX},
+	"MVAY": {OpCode: OpMVAY},
+	"MVYA": {OpCode: OpMVYA},
+	"NOOP": {OpCode: OpNOOP},
+	"OUTA": {OpCode: OpOUTA},
+	"SETA": {OpCode: OpSETA, RequiresArgument: true},
+	"SETI": {OpCode: OpSETI, RequiresArgument: true},
+	"JUMP": {OpCode: OpJUMP, RequiresArgument: true},
+	"INCI": {OpCode: OpINCI},
+	"LDAI": {OpCode: OpLDAI},
+	"CMPI": {OpCode: OpCMPI},
+	"JNEQ": {OpCode: OpJNEQ},
+}
+
+type Instruction struct {
+	OpCode           Word
+	RequiresArgument bool
 }
 
 type Token struct {
 	Kind     int
-	Value    Word
+	Value    Instruction
 	RawToken string
 	Line     int
 	Col      int
 }
 
 func (t Token) String() string {
-	return fmt.Sprintf("%q (%d) %s", t.RawToken, t.Value, kind[t.Kind])
+	return fmt.Sprintf("%q (%d) %s", t.RawToken, t.Value.OpCode, kind[t.Kind])
 }
 
-func Tokenize(data []rune) ([]Token, error) {
+func Tokenize(data string) ([]Token, error) {
 	t := new(tokenizer)
 	t.line = 1
 
 	if os.Getenv("TOKENIZE_LOGS") != "" {
-		t.debug = os.Stderr
-	} else {
-		t.debug = io.Discard
+		t.debug = true
 	}
 
-	t.input = data
+	t.input = []rune(data)
 	for state := wantToken; state != nil; {
 		state = state(t)
 		if t.err != nil {
@@ -187,7 +192,7 @@ func Tokenize(data []rune) ([]Token, error) {
 
 type tokenizer struct {
 	sourceName       string
-	debug            io.Writer
+	debug            bool
 	input            []rune
 	start, pos, line int
 	result           []Token
@@ -236,7 +241,7 @@ func newToken(rawToken []rune) (Token, error) {
 		if err != nil {
 			return Token{}, fmt.Errorf("unknown instruction %q", string(rawToken))
 		}
-		value = Word(converted)
+		value = Instruction{OpCode: Word(converted)}
 	}
 	return Token{
 		Kind:     tokenKind,
@@ -256,7 +261,9 @@ func (t *tokenizer) emit() {
 }
 
 func (t *tokenizer) log(args ...interface{}) {
-	fmt.Fprintln(t.debug, args...)
+	if t.debug {
+		fmt.Fprintln(os.Stderr, args...)
+	}
 }
 
 func (t *tokenizer) logState(stateName string) {
@@ -327,34 +334,27 @@ func inComment(t *tokenizer) stateFunc {
 	}
 }
 
-func Assemble(input io.Reader) ([]Word, error) {
+func Assemble(input io.Reader) (program []Word, err error) {
 	data, err := io.ReadAll(input)
 	if err != nil {
 		return nil, err
 	}
-	var program []Word
-	tokens, err := Tokenize([]rune(string(data)))
+	tokens, err := Tokenize(string(data))
 	if err != nil {
 		return nil, err
 	}
 	argRequired := false
-	for _, t := range tokens {
-		if t.Kind == TokenComment {
+	for _, token := range tokens {
+		if token.Kind == TokenComment {
 			continue
 		}
 
-		if t.Kind == TokenInstruction && argRequired {
-			return nil, fmt.Errorf("line %d: unexpected instruction %q", t.Line, t.RawToken)
+		if token.Kind == TokenInstruction && argRequired {
+			return nil, fmt.Errorf("line %d: unexpected instruction %q", token.Line, token.RawToken)
 		}
-		switch t.RawToken {
-		case "SETA", "SETI", "JUMP":
-			argRequired = true
-		default:
-			argRequired = false
-		}
-		program = append(program, t.Value)
+		argRequired = token.Value.RequiresArgument
+		program = append(program, token.Value.OpCode)
 	}
-	program = append(program, OpHALT)
 	return program, nil
 }
 

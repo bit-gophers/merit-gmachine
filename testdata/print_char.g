@@ -1,2 +1,3 @@
 SETA 65
 OUTA
+halt
