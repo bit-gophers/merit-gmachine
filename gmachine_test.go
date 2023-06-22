@@ -206,25 +206,25 @@ func TestTokenize(t *testing.T) {
 	want := []gmachine.Token{
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.Instruction{OpCode: gmachine.OpNOOP},
+			Value:    gmachine.OpNOOP,
 			RawToken: "NOOP",
 			Line:     1,
 		},
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.Instruction{OpCode: gmachine.OpSETA, RequiresArgument: true},
+			Value:    gmachine.OpSETA,
 			RawToken: "SETA",
 			Line:     2,
 		},
 		{
 			Kind:     gmachine.TokenArgument,
-			Value:    gmachine.Instruction{OpCode: 5},
+			Value:    5,
 			RawToken: "5",
 			Line:     2,
 		},
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.Instruction{OpCode: gmachine.OpHALT},
+			Value:    gmachine.OpHALT,
 			RawToken: "HALT",
 			Line:     3,
 		},
@@ -327,5 +327,37 @@ func TestPrintHelloWorld(t *testing.T) {
 	got := buf.String()
 	if want != got {
 		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestTokenize_RecognizeNumberLiterals(t *testing.T) {
+	t.Parallel()
+	program := "15"
+	want := []gmachine.Token{
+		{
+			Kind:     gmachine.TokenNumberLiteral,
+			Value:    15,
+			RawToken: "15",
+			Line:     1,
+			Col:      1,
+		},
+	}
+	got, err := gmachine.Tokenize(program)
+	if err != nil {
+		t.Errorf("want no error: got %v", err)
+	}
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestToken_RequiresArgument(t *testing.T) {
+	t.Parallel()
+	token := gmachine.Token{
+		Kind:  gmachine.TokenInstruction,
+		Value: gmachine.OpSETA,
+	}
+	if !token.RequiresArgument() {
+		t.Error("token should require argument")
 	}
 }

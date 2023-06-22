@@ -32,10 +32,13 @@ const (
 	OpLDAI
 	OpCMPI
 	OpJNEQ
+)
 
-	TokenInstruction = iota
+const (
+	TokenInstruction = iota + 1
 	TokenArgument
 	TokenComment
+	TokenNumberLiteral
 
 	eof rune = 0
 )
@@ -134,25 +137,25 @@ func (g *Machine) RunProgram(data []Word) error {
 }
 
 // Map of assembly instructions to OP codes
-var instructions = map[string]Instruction{
-	"ADXY": {OpCode: OpADXY},
-	"DECA": {OpCode: OpDECA},
-	"DECI": {OpCode: OpDECI},
-	"HALT": {OpCode: OpHALT},
-	"INCA": {OpCode: OpINCA},
-	"JINZ": {OpCode: OpJINZ},
-	"MVAX": {OpCode: OpMVAX},
-	"MVAY": {OpCode: OpMVAY},
-	"MVYA": {OpCode: OpMVYA},
-	"NOOP": {OpCode: OpNOOP},
-	"OUTA": {OpCode: OpOUTA},
-	"SETA": {OpCode: OpSETA, RequiresArgument: true},
-	"SETI": {OpCode: OpSETI, RequiresArgument: true},
-	"JUMP": {OpCode: OpJUMP, RequiresArgument: true},
-	"INCI": {OpCode: OpINCI},
-	"LDAI": {OpCode: OpLDAI},
-	"CMPI": {OpCode: OpCMPI},
-	"JNEQ": {OpCode: OpJNEQ},
+var instructions = map[string]Word{
+	"ADXY": OpADXY,
+	"DECA": OpDECA,
+	"DECI": OpDECI,
+	"HALT": OpHALT,
+	"INCA": OpINCA,
+	"JINZ": OpJINZ,
+	"MVAX": OpMVAX,
+	"MVAY": OpMVAY,
+	"MVYA": OpMVYA,
+	"NOOP": OpNOOP,
+	"OUTA": OpOUTA,
+	"SETA": OpSETA,
+	"SETI": OpSETI,
+	"JUMP": OpJUMP,
+	"INCI": OpINCI,
+	"LDAI": OpLDAI,
+	"CMPI": OpCMPI,
+	"JNEQ": OpJNEQ,
 }
 
 type Instruction struct {
@@ -162,14 +165,24 @@ type Instruction struct {
 
 type Token struct {
 	Kind     int
-	Value    Instruction
+	Value    Word
 	RawToken string
 	Line     int
 	Col      int
 }
 
+func (t Token) RequiresArgument() bool {
+	if t.Kind == TokenInstruction {
+		switch t.Value {
+		case OpSETA, OpSETI, OpJUMP, OpJNEQ:
+			return true
+		}
+	}
+	return false
+}
+
 func (t Token) String() string {
-	return fmt.Sprintf("%q (%d) %s", t.RawToken, t.Value.OpCode, kind[t.Kind])
+	return fmt.Sprintf("%q (%d) %s", t.RawToken, t.Value, kind[t.Kind])
 }
 
 func Tokenize(data string) ([]Token, error) {
@@ -241,7 +254,7 @@ func newToken(rawToken []rune) (Token, error) {
 		if err != nil {
 			return Token{}, fmt.Errorf("unknown instruction %q", string(rawToken))
 		}
-		value = Instruction{OpCode: Word(converted)}
+		value = Word(converted)
 	}
 	return Token{
 		Kind:     tokenKind,
@@ -352,8 +365,8 @@ func Assemble(input io.Reader) (program []Word, err error) {
 		if token.Kind == TokenInstruction && argRequired {
 			return nil, fmt.Errorf("line %d: unexpected instruction %q", token.Line, token.RawToken)
 		}
-		argRequired = token.Value.RequiresArgument
-		program = append(program, token.Value.OpCode)
+		argRequired = token.RequiresArgument()
+		program = append(program, token.Value)
 	}
 	return program, nil
 }
