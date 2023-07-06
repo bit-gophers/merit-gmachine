@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -217,7 +218,7 @@ func TestTokenize(t *testing.T) {
 			Line:     2,
 		},
 		{
-			Kind:     gmachine.TokenArgument,
+			Kind:     gmachine.TokenNumberLiteral,
 			Value:    5,
 			RawToken: "5",
 			Line:     2,
@@ -339,7 +340,7 @@ func TestTokenize_RecognizeNumberLiterals(t *testing.T) {
 			Value:    15,
 			RawToken: "15",
 			Line:     1,
-			Col:      1,
+			Col:      0,
 		},
 	}
 	got, err := gmachine.Tokenize(program)
@@ -348,6 +349,55 @@ func TestTokenize_RecognizeNumberLiterals(t *testing.T) {
 	}
 	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestTokenize_RecognizeRuneLiterals(t *testing.T) {
+	t.Parallel()
+	type testCase struct {
+		name    string
+		program string
+		want    []gmachine.Token
+	}
+	for _, c := range []testCase{
+		{
+			name:    "test ascii",
+			program: "'H'",
+			want: []gmachine.Token{
+				{
+					Kind:     gmachine.TokenRuneLiteral,
+					Value:    72,
+					RawToken: "'H'",
+					Line:     1,
+					Col:      0,
+				},
+			},
+		},
+		{
+			name:    "test unicode",
+			program: "'л'",
+			want: []gmachine.Token{
+				{
+					Kind:     gmachine.TokenRuneLiteral,
+					Value:    gmachine.Word('л'),
+					RawToken: "'л'",
+					Line:     1,
+					Col:      0,
+				},
+			},
+		},
+	} {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := gmachine.Tokenize(c.program)
+			if err != nil {
+				t.Errorf("want no error: got %v", err)
+			}
+			if !cmp.Equal(c.want, got) {
+				t.Error(cmp.Diff(c.want, got))
+			}
+		})
 	}
 }
 
@@ -360,4 +410,8 @@ func TestToken_RequiresArgument(t *testing.T) {
 	if !token.RequiresArgument() {
 		t.Error("token should require argument")
 	}
+}
+
+func debug() {
+	os.Setenv(gmachine.TokenizeLogs, "true")
 }

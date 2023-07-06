@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // DefaultMemSize is the number of 64-bit words of memory which will be
@@ -36,18 +37,20 @@ const (
 
 const (
 	TokenInstruction = iota + 1
-	TokenArgument
 	TokenComment
 	TokenNumberLiteral
+	TokenRuneLiteral
 
 	eof rune = 0
+
+	TokenizeLogs = "TOKENIZE_LOGS"
 )
 
 var instructionsRequiringArguments = map[int]struct{}{}
 
 var kind = map[int]string{
-	TokenInstruction: "instruction",
-	TokenArgument:    "argument",
+	TokenInstruction:   "instruction",
+	TokenNumberLiteral: "number literal",
 }
 
 type Word uint64
@@ -189,7 +192,7 @@ func Tokenize(data string) ([]Token, error) {
 	t := new(tokenizer)
 	t.line = 1
 
-	if os.Getenv("TOKENIZE_LOGS") != "" {
+	if os.Getenv(TokenizeLogs) != "" {
 		t.debug = true
 	}
 
@@ -245,21 +248,25 @@ func newToken(rawToken []rune) (Token, error) {
 		}, nil
 	}
 
-	caseInsensitiveToken := strings.ToUpper(stringToken)
 	tokenKind := TokenInstruction
-	value, ok := instructions[caseInsensitiveToken]
+	value, ok := instructions[strings.ToUpper(stringToken)]
 	if !ok {
-		tokenKind = TokenArgument
-		converted, err := strconv.Atoi(caseInsensitiveToken)
-		if err != nil {
-			return Token{}, fmt.Errorf("unknown instruction %q", string(rawToken))
+		if utf8.RuneCountInString(stringToken) == 3 && strings.HasPrefix(stringToken, "'") && strings.HasSuffix(stringToken, "'") {
+			tokenKind = TokenRuneLiteral
+			value = Word([]rune(stringToken)[1])
+		} else {
+			tokenKind = TokenNumberLiteral
+			converted, err := strconv.Atoi(stringToken)
+			if err != nil {
+				return Token{}, fmt.Errorf("unknown instruction %q", string(rawToken))
+			}
+			value = Word(converted)
 		}
-		value = Word(converted)
 	}
 	return Token{
 		Kind:     tokenKind,
 		Value:    value,
-		RawToken: caseInsensitiveToken,
+		RawToken: stringToken,
 	}, nil
 }
 
@@ -325,8 +332,24 @@ func inToken(t *tokenizer) stateFunc {
 			t.backup()
 			t.emit()
 			return wantToken
+		case '\'':
+			return inRuneLiteral
 		case eof:
 			t.emit()
+			return nil
+		}
+	}
+}
+
+func inRuneLiteral(t *tokenizer) stateFunc {
+	for {
+		t.logState("inRuneLiteral")
+		switch t.next() {
+		case '\'':
+			t.emit()
+			return wantToken
+		case eof:
+			t.err = fmt.Errorf("unexpected EOF in rune literal")
 			return nil
 		}
 	}
