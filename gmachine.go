@@ -2,6 +2,7 @@
 package gmachine
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -60,13 +61,28 @@ type Machine struct {
 	A, I, P, X, Y Word
 	Z             bool
 	out           io.Writer
+	in            io.Reader
 }
 
 func New() *Machine {
 	return &Machine{
 		Memory: make([]Word, DefaultMemSize),
+		in:     os.Stdin,
 		out:    os.Stdout,
 	}
+}
+
+func NewWithInputAndOutput(in io.Reader, out io.Writer) *Machine {
+	g := New()
+	g.in = in
+	g.out = out
+	return g
+}
+
+func NewWithInput(in io.Reader) *Machine {
+	g := New()
+	g.in = in
+	return g
 }
 
 func NewWithOutput(out io.Writer) *Machine {
@@ -75,8 +91,14 @@ func NewWithOutput(out io.Writer) *Machine {
 	return g
 }
 
-func (g *Machine) Run() error {
+func (g *Machine) Run(debug bool) error {
 	for {
+		if debug {
+			_, _ = fmt.Fprintln(g.out, g.String())
+			r := bufio.NewReader(g.in)
+			_, _, _ = r.ReadLine()
+		}
+
 		// fmt.Printf("P: %d NextOp: %d A: %d I: %d X: %d Y: %d\n", g.P, g.Memory[g.P], g.A, g.I, g.X, g.Y)
 		op := g.Fetch()
 		switch op {
@@ -133,10 +155,10 @@ func (g *Machine) Fetch() Word {
 	return op
 }
 
-func (g *Machine) RunProgram(data []Word) error {
+func (g *Machine) RunProgram(data []Word, debug bool) error {
 	copy(g.Memory, data)
 	g.P = 0
-	return g.Run()
+	return g.Run(debug)
 }
 
 // Map of assembly instructions to OP codes
@@ -407,18 +429,30 @@ func AssembleFromFile(filename string) ([]Word, error) {
 	return program, nil
 }
 
-func (g *Machine) AssembleAndRunFromString(program string) error {
+func (g *Machine) AssembleAndRunFromString(program string, debug bool) error {
 	words, err := Assemble(strings.NewReader(program))
 	if err != nil {
 		return err
 	}
-	return g.RunProgram(words)
+	return g.RunProgram(words, debug)
 }
 
-func (g *Machine) AssembleAndRunFromFile(filename string) error {
+func (g *Machine) AssembleAndRunFromFile(filename string, debug bool) error {
 	program, err := AssembleFromFile(filename)
 	if err != nil {
 		return err
 	}
-	return g.RunProgram(program)
+	return g.RunProgram(program, debug)
+}
+
+func (g *Machine) String() string {
+	return fmt.Sprintf(`
+		A: %v
+		I: %v
+		P: %v
+		Memory(P): %v
+		X: %v
+		Y: %v
+		Z: %v
+	`, g.A, g.I, g.P, g.Memory[g.P], g.X, g.Y, g.Z)
 }

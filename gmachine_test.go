@@ -41,7 +41,7 @@ func TestNew(t *testing.T) {
 func TestHALT(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromString("halt")
+	err := g.AssembleAndRunFromString("halt", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestHALT(t *testing.T) {
 func TestNOOP(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromString("noop halt")
+	err := g.AssembleAndRunFromString("noop halt", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestNOOP(t *testing.T) {
 func TestINCA(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromString("inca halt")
+	err := g.AssembleAndRunFromString("inca halt", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestINCA(t *testing.T) {
 func TestDECA(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromString("SETA 2;DECA;halt")
+	err := g.AssembleAndRunFromString("SETA 2;DECA;halt", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestDECA(t *testing.T) {
 func TestSubtract2From3Gives1(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromFile("testdata/subtract2from3.g")
+	err := g.AssembleAndRunFromFile("testdata/subtract2from3.g", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestSubtract2From3Gives1(t *testing.T) {
 func TestSETA(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromFile("testdata/setaTo5.g")
+	err := g.AssembleAndRunFromFile("testdata/setaTo5.g", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestSETA(t *testing.T) {
 func TestFib(t *testing.T) {
 	t.Parallel()
 	g := gmachine.New()
-	err := g.AssembleAndRunFromFile("testdata/fib.g")
+	err := g.AssembleAndRunFromFile("testdata/fib.g", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestAssembly(t *testing.T) {
 func TestAssembleAndRunFromReader(t *testing.T) {
 	t.Parallel()
 	machine := gmachine.New()
-	if err := machine.AssembleAndRunFromString("NOOP; halt"); err != nil {
+	if err := machine.AssembleAndRunFromString("NOOP; halt", false); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -176,7 +176,7 @@ func TestAssemblingAndRunFromFile(t *testing.T) {
 func TestAssemblingAndRunWithNonExistentFile(t *testing.T) {
 	t.Parallel()
 	machine := gmachine.New()
-	if err := machine.AssembleAndRunFromFile("testdata/non-existent-program.g"); err == nil {
+	if err := machine.AssembleAndRunFromFile("testdata/non-existent-program.g", false); err == nil {
 		t.Fatal("expected an error for invalid file")
 	}
 }
@@ -184,7 +184,7 @@ func TestAssemblingAndRunWithNonExistentFile(t *testing.T) {
 func TestAssemblingAndRunWithBadFile(t *testing.T) {
 	t.Parallel()
 	machine := gmachine.New()
-	if err := machine.AssembleAndRunFromFile("testdata/invalid_program.g"); err == nil {
+	if err := machine.AssembleAndRunFromFile("testdata/invalid_program.g", false); err == nil {
 		t.Fatal("expected an error for bad program file")
 	}
 }
@@ -286,7 +286,7 @@ func TestUnknownOpCodeReturnsError(t *testing.T) {
 	t.Parallel()
 	m := gmachine.New()
 	m.P = math.MaxUint64
-	err := m.RunProgram([]gmachine.Word{math.MaxUint64})
+	err := m.RunProgram([]gmachine.Word{math.MaxUint64}, false)
 	if err == nil {
 		t.Error("no error")
 	}
@@ -305,7 +305,7 @@ func TestPrintA(t *testing.T) {
 	t.Parallel()
 	buf := new(bytes.Buffer)
 	g := gmachine.NewWithOutput(buf)
-	err := g.AssembleAndRunFromFile("testdata/print_char.g")
+	err := g.AssembleAndRunFromFile("testdata/print_char.g", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestPrintHelloWorld(t *testing.T) {
 	t.Parallel()
 	buf := new(bytes.Buffer)
 	g := gmachine.NewWithOutput(buf)
-	err := g.AssembleAndRunFromFile("testdata/hello_world.g")
+	err := g.AssembleAndRunFromFile("testdata/hello_world.g", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,6 +409,79 @@ func TestToken_RequiresArgument(t *testing.T) {
 	}
 	if !token.RequiresArgument() {
 		t.Error("token should require argument")
+	}
+}
+
+func TestStateStringOutput(t *testing.T) {
+	t.Parallel()
+	g := gmachine.New()
+	err := g.AssembleAndRunFromString("inca halt inca", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want = `
+		A: 1
+		I: 0
+		P: 2
+		Memory(P): 3
+		X: 0
+		Y: 0
+		Z: false
+	`
+	got := g.String()
+	if want != got {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestDebugFlag(t *testing.T) {
+	/*
+		t.Parallel()
+		buf := new(bytes.Buffer)
+		g := gmachine.NewWithOutput(buf)
+		err := g.AssembleAndRunFromFile("testdata/print_char.g", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "A"
+		got := buf.String()
+		if want != got {
+			t.Errorf("want %q, got %q", want, got)
+		}
+	*/
+
+	t.Parallel()
+	input := bytes.NewReader([]byte("asdf\nasdf\nasdf\n"))
+	output := new(bytes.Buffer)
+	g := gmachine.NewWithInputAndOutput(input, output)
+	err := g.AssembleAndRunFromString("inca halt", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := `
+		A: 0
+		I: 0
+		P: 0
+		Memory(P): 3
+		X: 0
+		Y: 0
+		Z: false
+	
+
+		A: 1
+		I: 0
+		P: 1
+		Memory(P): 1
+		X: 0
+		Y: 0
+		Z: false
+	
+`
+	got := output.String()
+
+	if want != got {
+		t.Error(cmp.Diff(want, got))
 	}
 }
 
