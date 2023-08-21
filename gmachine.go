@@ -15,8 +15,10 @@ import (
 // allocated to a new G-machine by default.
 const DefaultMemSize = 1024
 
+type OpCode Word
+
 const (
-	OpHALT = iota + 1
+	OpHALT OpCode = iota + 1
 	OpNOOP
 	OpINCA
 	OpDECA
@@ -46,8 +48,6 @@ const (
 
 	TokenizeLogs = "TOKENIZE_LOGS"
 )
-
-var instructionsRequiringArguments = map[int]struct{}{}
 
 var kind = map[int]string{
 	TokenInstruction:   "instruction",
@@ -101,7 +101,7 @@ func (g *Machine) Run(debug bool) error {
 
 		// fmt.Printf("P: %d NextOp: %d A: %d I: %d X: %d Y: %d\n", g.P, g.Memory[g.P], g.A, g.I, g.X, g.Y)
 		op := g.Fetch()
-		switch op {
+		switch OpCode(op) {
 		case OpHALT:
 			return nil
 		case OpNOOP:
@@ -155,6 +155,23 @@ func (g *Machine) Fetch() Word {
 	return op
 }
 
+func (g *Machine) Peek() Word {
+	op := g.Memory[g.P]
+	return op
+}
+
+func (g *Machine) DecodeNextInstruction() string {
+	opCode := OpCode(g.Memory[g.P])
+
+	result := opCode.String()
+
+	if opCode.RequiresArgument() {
+		result += fmt.Sprintf(" %v", g.Peek())
+	}
+
+	return result
+}
+
 func (g *Machine) RunProgram(data []Word, debug bool) error {
 	copy(g.Memory, data)
 	g.P = 0
@@ -162,7 +179,7 @@ func (g *Machine) RunProgram(data []Word, debug bool) error {
 }
 
 // Map of assembly instructions to OP codes
-var instructions = map[string]Word{
+var instructions = map[string]OpCode{
 	"ADXY": OpADXY,
 	"DECA": OpDECA,
 	"DECI": OpDECI,
@@ -183,6 +200,8 @@ var instructions = map[string]Word{
 	"JNEQ": OpJNEQ,
 }
 
+var opCodes = InvertMap(instructions)
+
 type Instruction struct {
 	OpCode           Word
 	RequiresArgument bool
@@ -196,14 +215,17 @@ type Token struct {
 	Col      int
 }
 
-func (t Token) RequiresArgument() bool {
-	if t.Kind == TokenInstruction {
-		switch t.Value {
-		case OpSETA, OpSETI, OpJUMP, OpJNEQ:
-			return true
-		}
+func (o OpCode) RequiresArgument() bool {
+	switch o {
+	case OpSETA, OpSETI, OpJUMP, OpJNEQ:
+		return true
 	}
+
 	return false
+}
+
+func (o OpCode) String() string {
+	return opCodes[o]
 }
 
 func (t Token) String() string {
@@ -229,7 +251,6 @@ func Tokenize(data string) ([]Token, error) {
 }
 
 type tokenizer struct {
-	sourceName       string
 	debug            bool
 	input            []rune
 	start, pos, line int
@@ -275,19 +296,19 @@ func newToken(rawToken []rune) (Token, error) {
 	if !ok {
 		if utf8.RuneCountInString(stringToken) == 3 && strings.HasPrefix(stringToken, "'") && strings.HasSuffix(stringToken, "'") {
 			tokenKind = TokenRuneLiteral
-			value = Word([]rune(stringToken)[1])
+			value = OpCode([]rune(stringToken)[1])
 		} else {
 			tokenKind = TokenNumberLiteral
 			converted, err := strconv.Atoi(stringToken)
 			if err != nil {
 				return Token{}, fmt.Errorf("unknown instruction %q", string(rawToken))
 			}
-			value = Word(converted)
+			value = OpCode(converted)
 		}
 	}
 	return Token{
 		Kind:     tokenKind,
-		Value:    value,
+		Value:    Word(value),
 		RawToken: stringToken,
 	}, nil
 }
@@ -410,7 +431,8 @@ func Assemble(input io.Reader) (program []Word, err error) {
 		if token.Kind == TokenInstruction && argRequired {
 			return nil, fmt.Errorf("line %d: unexpected instruction %q", token.Line, token.RawToken)
 		}
-		argRequired = token.RequiresArgument()
+
+		argRequired = OpCode(token.Value).RequiresArgument()
 		program = append(program, token.Value)
 	}
 	return program, nil
@@ -446,13 +468,15 @@ func (g *Machine) AssembleAndRunFromFile(filename string, debug bool) error {
 }
 
 func (g *Machine) String() string {
-	return fmt.Sprintf(`
-		A: %v
-		I: %v
-		P: %v
-		Memory(P): %v
-		X: %v
-		Y: %v
-		Z: %v
-	`, g.A, g.I, g.P, g.Memory[g.P], g.X, g.Y, g.Z)
+	return fmt.Sprintf(`P: %06v A: %06v I: %06v X: %06v Y: %06v Z: %v NEXT: %v`, g.P, g.A, g.I, g.X, g.Y, g.Z, g.DecodeNextInstruction())
+}
+
+func InvertMap[K, V comparable](m map[K]V) map[V]K {
+	result := map[V]K{}
+
+	for k, v := range m {
+		result[v] = k
+	}
+
+	return result
 }

@@ -451,7 +451,7 @@ func TestDebugFlag(t *testing.T) {
 	*/
 
 	t.Parallel()
-	input := bytes.NewReader([]byte("asdf\nasdf\nasdf\n"))
+	input := bytes.NewReader([]byte(""))
 	output := new(bytes.Buffer)
 	g := gmachine.NewWithInputAndOutput(input, output)
 	err := g.AssembleAndRunFromString("inca halt", true)
@@ -481,6 +481,16 @@ func TestDebugFlag(t *testing.T) {
 	got := output.String()
 
 	if want != got {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestInvertMap(t *testing.T) {
+	testMap := map[string]int{"A": 1, "B": 2, "C": 3}
+	want := map[int]string{1: "A", 2: "B", 3: "C"}
+	got := gmachine.InvertMap(testMap)
+
+	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
 	}
 }
