@@ -3,6 +3,7 @@ package gmachine
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -156,7 +157,7 @@ func (g *Machine) Fetch() Word {
 }
 
 func (g *Machine) Peek() Word {
-	op := g.Memory[g.P]
+	op := g.Memory[g.P+1]
 	return op
 }
 
@@ -176,6 +177,18 @@ func (g *Machine) RunProgram(data []Word, debug bool) error {
 	copy(g.Memory, data)
 	g.P = 0
 	return g.Run(debug)
+}
+
+func MainRun() int {
+	debug := flag.Bool("debug", false, "If true print debug output")
+	flag.Parse()
+	g := New()
+	err := g.AssembleAndRunFromFile(flag.Arg(0), *debug)
+	if err != nil {
+		fmt.Fprint(os.Stderr, err)
+		return 1
+	}
+	return 0
 }
 
 // Map of assembly instructions to OP codes
@@ -424,15 +437,19 @@ func Assemble(input io.Reader) (program []Word, err error) {
 	}
 	argRequired := false
 	for _, token := range tokens {
-		if token.Kind == TokenComment {
+		switch token.Kind {
+		case TokenComment:
 			continue
+		case TokenInstruction:
+			if argRequired {
+				return nil, fmt.Errorf("line %d: unexpected instruction %q", token.Line, token.RawToken)
+			}
+			argRequired = OpCode(token.Value).RequiresArgument()
+		case TokenRuneLiteral, TokenNumberLiteral:
+			argRequired = false
+		default:
+			return nil, fmt.Errorf("line %d: unknown token kine %q", token.Line, token.Kind)
 		}
-
-		if token.Kind == TokenInstruction && argRequired {
-			return nil, fmt.Errorf("line %d: unexpected instruction %q", token.Line, token.RawToken)
-		}
-
-		argRequired = OpCode(token.Value).RequiresArgument()
 		program = append(program, token.Value)
 	}
 	return program, nil

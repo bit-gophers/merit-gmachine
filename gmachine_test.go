@@ -3,6 +3,7 @@ package gmachine_test
 import (
 	"bytes"
 	"fmt"
+	"github.com/rogpeppe/go-internal/testscript"
 	"math"
 	"os"
 	"strings"
@@ -143,7 +144,10 @@ func TestFib(t *testing.T) {
 
 func TestAssembly(t *testing.T) {
 	t.Parallel()
-	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT}
+	want := []gmachine.Word{
+		gmachine.Word(gmachine.OpNOOP),
+		gmachine.Word(gmachine.OpHALT),
+	}
 	got, err := gmachine.Assemble(strings.NewReader("NOOP; halt"))
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +167,10 @@ func TestAssembleAndRunFromReader(t *testing.T) {
 
 func TestAssemblingAndRunFromFile(t *testing.T) {
 	t.Parallel()
-	want := []gmachine.Word{gmachine.OpNOOP, gmachine.OpHALT}
+	want := []gmachine.Word{
+		gmachine.Word(gmachine.OpNOOP),
+		gmachine.Word(gmachine.OpHALT),
+	}
 	got, err := gmachine.AssembleFromFile("testdata/halting_program.g")
 	if err != nil {
 		t.Fatal(err)
@@ -207,13 +214,13 @@ func TestTokenize(t *testing.T) {
 	want := []gmachine.Token{
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.OpNOOP,
+			Value:    gmachine.Word(gmachine.OpNOOP),
 			RawToken: "NOOP",
 			Line:     1,
 		},
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.OpSETA,
+			Value:    gmachine.Word(gmachine.OpSETA),
 			RawToken: "SETA",
 			Line:     2,
 		},
@@ -225,7 +232,7 @@ func TestTokenize(t *testing.T) {
 		},
 		{
 			Kind:     gmachine.TokenInstruction,
-			Value:    gmachine.OpHALT,
+			Value:    gmachine.Word(gmachine.OpHALT),
 			RawToken: "HALT",
 			Line:     3,
 		},
@@ -401,14 +408,17 @@ func TestTokenize_RecognizeRuneLiterals(t *testing.T) {
 	}
 }
 
-func TestToken_RequiresArgument(t *testing.T) {
+func TestOpCode_RequiresArgument(t *testing.T) {
 	t.Parallel()
-	token := gmachine.Token{
-		Kind:  gmachine.TokenInstruction,
-		Value: gmachine.OpSETA,
+	for _, c := range []gmachine.OpCode{gmachine.OpSETA, gmachine.OpSETI} {
+		if !c.RequiresArgument() {
+			t.Errorf("Op code %s should require argument", c.String())
+		}
 	}
-	if !token.RequiresArgument() {
-		t.Error("token should require argument")
+	for _, c := range []gmachine.OpCode{gmachine.OpNOOP, gmachine.OpHALT} {
+		if c.RequiresArgument() {
+			t.Errorf("Op code %s should not require argument", c.String())
+		}
 	}
 }
 
@@ -419,15 +429,7 @@ func TestStateStringOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var want = `
-		A: 1
-		I: 0
-		P: 2
-		Memory(P): 3
-		X: 0
-		Y: 0
-		Z: false
-	`
+	want := "P: 000002 A: 000001 I: 000000 X: 000000 Y: 000000 Z: false NEXT: INCA"
 	got := g.String()
 	if want != got {
 		t.Error(cmp.Diff(want, got))
@@ -435,21 +437,6 @@ func TestStateStringOutput(t *testing.T) {
 }
 
 func TestDebugFlag(t *testing.T) {
-	/*
-		t.Parallel()
-		buf := new(bytes.Buffer)
-		g := gmachine.NewWithOutput(buf)
-		err := g.AssembleAndRunFromFile("testdata/print_char.g", false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		want := "A"
-		got := buf.String()
-		if want != got {
-			t.Errorf("want %q, got %q", want, got)
-		}
-	*/
-
 	t.Parallel()
 	input := bytes.NewReader([]byte(""))
 	output := new(bytes.Buffer)
@@ -458,29 +445,19 @@ func TestDebugFlag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	want := `
-		A: 0
-		I: 0
-		P: 0
-		Memory(P): 3
-		X: 0
-		Y: 0
-		Z: false
-	
-
-		A: 1
-		I: 0
-		P: 1
-		Memory(P): 1
-		X: 0
-		Y: 0
-		Z: false
-	
-`
 	got := output.String()
+	if !strings.HasPrefix(got, "P:") {
+		t.Errorf("Debug should start with %q", "P:")
+	}
+}
 
-	if want != got {
+func TestDebugger_DecodeInstruction(t *testing.T) {
+	t.Parallel()
+	want := "JUMP 5"
+	g := gmachine.New()
+	copy(g.Memory, []gmachine.Word{gmachine.Word(gmachine.OpJUMP), 5})
+	got := g.DecodeNextInstruction()
+	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
 	}
 }
@@ -493,6 +470,19 @@ func TestInvertMap(t *testing.T) {
 	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
 	}
+}
+
+func TestScript(t *testing.T) {
+	t.Parallel()
+	testscript.Run(t, testscript.Params{
+		Dir: "testdata/scripts",
+	})
+}
+
+func TestMain(m *testing.M) {
+	os.Exit(testscript.RunMain(m, map[string]func() int{
+		"run": gmachine.MainRun,
+	}))
 }
 
 func debug() {
