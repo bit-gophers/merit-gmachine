@@ -3,6 +3,7 @@ package gmachine
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -61,46 +62,27 @@ type Machine struct {
 	Memory        []Word
 	A, I, P, X, Y Word
 	Z             bool
-	out           io.Writer
-	in            io.Reader
+	Out           io.Writer
+	In            io.Reader
 }
 
 func New() *Machine {
 	return &Machine{
 		Memory: make([]Word, DefaultMemSize),
-		in:     os.Stdin,
-		out:    os.Stdout,
+		In:     os.Stdin,
+		Out:    os.Stdout,
 	}
 }
 
-func NewWithInputAndOutput(in io.Reader, out io.Writer) *Machine {
-	g := New()
-	g.in = in
-	g.out = out
-	return g
-}
-
-func NewWithInput(in io.Reader) *Machine {
-	g := New()
-	g.in = in
-	return g
-}
-
-func NewWithOutput(out io.Writer) *Machine {
-	g := New()
-	g.out = out
-	return g
-}
-
 func (g *Machine) Run(debug bool) error {
+	inReader := bufio.NewReader(g.In)
+
 	for {
 		if debug {
-			_, _ = fmt.Fprintln(g.out, g.String())
-			r := bufio.NewReader(g.in)
-			_, _, _ = r.ReadLine()
+			fmt.Fprint(g.Out, g.String())
+			inReader.ReadLine()
 		}
 
-		// fmt.Printf("P: %d NextOp: %d A: %d I: %d X: %d Y: %d\n", g.P, g.Memory[g.P], g.A, g.I, g.X, g.Y)
 		op := g.Fetch()
 		switch OpCode(op) {
 		case OpHALT:
@@ -131,7 +113,7 @@ func (g *Machine) Run(debug bool) error {
 		case OpMVYA:
 			g.A = g.Y
 		case OpOUTA:
-			fmt.Fprintf(g.out, "%c", g.A)
+			fmt.Fprintf(g.Out, "%c", g.A)
 		case OpJUMP:
 			g.P = g.Fetch()
 		case OpINCI:
@@ -173,17 +155,31 @@ func (g *Machine) DecodeNextInstruction() string {
 	return result
 }
 
-func (g *Machine) RunProgram(data []Word, debug bool) error {
+func (g *Machine) Load(data []Word) error {
+	if len(data) > len(g.Memory) {
+		return errors.New("program size exceeds memory size")
+	}
+
 	copy(g.Memory, data)
 	g.P = 0
-	return g.Run(debug)
+	return nil
 }
 
 func MainRun() int {
 	debug := flag.Bool("debug", false, "If true print debug output")
 	flag.Parse()
 	g := New()
-	err := g.AssembleAndRunFromFile(flag.Arg(0), *debug)
+	program, err := AssembleFromFile(flag.Arg(0))
+	if err != nil {
+		fmt.Fprint(os.Stderr, err)
+		return 1
+	}
+	err = g.Load(program)
+	if err != nil {
+		fmt.Fprint(os.Stderr, err)
+		return 1
+	}
+	err = g.Run(*debug)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
 		return 1
@@ -424,64 +420,6 @@ func inComment(t *tokenizer) stateFunc {
 			return nil
 		}
 	}
-}
-
-func Assemble(input io.Reader) (program []Word, err error) {
-	data, err := io.ReadAll(input)
-	if err != nil {
-		return nil, err
-	}
-	tokens, err := Tokenize(string(data))
-	if err != nil {
-		return nil, err
-	}
-	argRequired := false
-	for _, token := range tokens {
-		switch token.Kind {
-		case TokenComment:
-			continue
-		case TokenInstruction:
-			if argRequired {
-				return nil, fmt.Errorf("line %d: unexpected instruction %q", token.Line, token.RawToken)
-			}
-			argRequired = OpCode(token.Value).RequiresArgument()
-		case TokenRuneLiteral, TokenNumberLiteral:
-			argRequired = false
-		default:
-			return nil, fmt.Errorf("line %d: unknown token kine %q", token.Line, token.Kind)
-		}
-		program = append(program, token.Value)
-	}
-	return program, nil
-}
-
-func AssembleFromFile(filename string) ([]Word, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	program, err := Assemble(file)
-	if err != nil {
-		return nil, fmt.Errorf("%s:%w", filename, err)
-	}
-	return program, nil
-}
-
-func (g *Machine) AssembleAndRunFromString(program string, debug bool) error {
-	words, err := Assemble(strings.NewReader(program))
-	if err != nil {
-		return err
-	}
-	return g.RunProgram(words, debug)
-}
-
-func (g *Machine) AssembleAndRunFromFile(filename string, debug bool) error {
-	program, err := AssembleFromFile(filename)
-	if err != nil {
-		return err
-	}
-	return g.RunProgram(program, debug)
 }
 
 func (g *Machine) String() string {

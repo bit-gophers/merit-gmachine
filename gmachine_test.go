@@ -3,7 +3,6 @@ package gmachine_test
 import (
 	"bytes"
 	"fmt"
-	"github.com/rogpeppe/go-internal/testscript"
 	"math"
 	"os"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	gmachine "github.com/bit-gophers/merit-gmachine"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/rogpeppe/go-internal/testscript"
 )
 
 func TestNew(t *testing.T) {
@@ -41,11 +41,7 @@ func TestNew(t *testing.T) {
 
 func TestHALT(t *testing.T) {
 	t.Parallel()
-	g := gmachine.New()
-	err := g.AssembleAndRunFromString("halt", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromString(t, "halt")
 	var want gmachine.Word = 1
 	got := g.P
 	if want != got {
@@ -55,11 +51,7 @@ func TestHALT(t *testing.T) {
 
 func TestNOOP(t *testing.T) {
 	t.Parallel()
-	g := gmachine.New()
-	err := g.AssembleAndRunFromString("noop halt", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromString(t, "noop halt")
 	var want gmachine.Word = 2
 	got := g.P
 	if want != got {
@@ -69,11 +61,7 @@ func TestNOOP(t *testing.T) {
 
 func TestINCA(t *testing.T) {
 	t.Parallel()
-	g := gmachine.New()
-	err := g.AssembleAndRunFromString("inca halt", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromString(t, "inca halt")
 	var want gmachine.Word = 1
 	got := g.A
 	if want != got {
@@ -83,11 +71,7 @@ func TestINCA(t *testing.T) {
 
 func TestDECA(t *testing.T) {
 	t.Parallel()
-	g := gmachine.New()
-	err := g.AssembleAndRunFromString("SETA 2;DECA;halt", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromString(t, "SETA 2;DECA;halt")
 	var want gmachine.Word = 1
 	got := g.A
 	if want != got {
@@ -97,11 +81,7 @@ func TestDECA(t *testing.T) {
 
 func TestSubtract2From3Gives1(t *testing.T) {
 	t.Parallel()
-	g := gmachine.New()
-	err := g.AssembleAndRunFromFile("testdata/subtract2from3.g", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromFile(t, "testdata/subtract2from3.g")
 	var want gmachine.Word = 1
 	got := g.A
 	if want != got {
@@ -111,11 +91,7 @@ func TestSubtract2From3Gives1(t *testing.T) {
 
 func TestSETA(t *testing.T) {
 	t.Parallel()
-	g := gmachine.New()
-	err := g.AssembleAndRunFromFile("testdata/setaTo5.g", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromFile(t, "testdata/setaTo5.g")
 	var want gmachine.Word = 5
 	got := g.A
 	if want != got {
@@ -130,11 +106,7 @@ func TestSETA(t *testing.T) {
 
 func TestFib(t *testing.T) {
 	t.Parallel()
-	g := gmachine.New()
-	err := g.AssembleAndRunFromFile("testdata/fib.g", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromFile(t, "testdata/fib.g")
 	var want gmachine.Word = 89
 	got := g.A
 	if want != got {
@@ -159,10 +131,7 @@ func TestAssembly(t *testing.T) {
 
 func TestAssembleAndRunFromReader(t *testing.T) {
 	t.Parallel()
-	machine := gmachine.New()
-	if err := machine.AssembleAndRunFromString("NOOP; halt", false); err != nil {
-		t.Fatal(err)
-	}
+	AssembleAndRunFromString(t, "NOOP; halt")
 }
 
 func TestAssemblingAndRunFromFile(t *testing.T) {
@@ -194,19 +163,6 @@ func TestAssemblingAndRunWithBadFile(t *testing.T) {
 	if err := machine.AssembleAndRunFromFile("testdata/invalid_program.g", false); err == nil {
 		t.Fatal("expected an error for bad program file")
 	}
-}
-
-func FuzzTokenize(f *testing.F) {
-	f.Add("NOOP HALT SETA 5")
-	f.Fuzz(func(t *testing.T, data string) {
-		//machine := gmachine.New()
-		//_ = machine.AssembleAndRunFromString(data)
-
-		got, err := gmachine.Tokenize(data)
-		if len(got) == 0 && err == nil && data != " " && data != "" {
-			t.Error("expected at least one token if no error is produced")
-		}
-	})
 }
 
 func TestTokenize(t *testing.T) {
@@ -293,7 +249,11 @@ func TestUnknownOpCodeReturnsError(t *testing.T) {
 	t.Parallel()
 	m := gmachine.New()
 	m.P = math.MaxUint64
-	err := m.RunProgram([]gmachine.Word{math.MaxUint64}, false)
+	err := m.Load([]gmachine.Word{math.MaxUint64})
+	if err != nil {
+		t.Error(err)
+	}
+	err = m.Run(false)
 	if err == nil {
 		t.Error("no error")
 	}
@@ -311,11 +271,8 @@ func TestAssembleErrorReaderReturnsError(t *testing.T) {
 func TestPrintA(t *testing.T) {
 	t.Parallel()
 	buf := new(bytes.Buffer)
-	g := gmachine.NewWithOutput(buf)
-	err := g.AssembleAndRunFromFile("testdata/print_char.g", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromFile(t, "testdata/print_char.g")
+	g.Out = buf
 	want := "A"
 	got := buf.String()
 	if want != got {
@@ -326,11 +283,8 @@ func TestPrintA(t *testing.T) {
 func TestPrintHelloWorld(t *testing.T) {
 	t.Parallel()
 	buf := new(bytes.Buffer)
-	g := gmachine.NewWithOutput(buf)
-	err := g.AssembleAndRunFromFile("testdata/hello_world.g", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromFile(t, "testdata/hello_world.g")
+	g.Out = buf
 	want := "Hello World"
 	got := buf.String()
 	if want != got {
@@ -424,11 +378,7 @@ func TestOpCode_RequiresArgument(t *testing.T) {
 
 func TestStateStringOutput(t *testing.T) {
 	t.Parallel()
-	g := gmachine.New()
-	err := g.AssembleAndRunFromString("inca halt inca", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromString(t, "inca halt inca")
 	want := "P: 000002 A: 000001 I: 000000 X: 000000 Y: 000000 Z: false NEXT: INCA"
 	got := g.String()
 	if want != got {
@@ -438,13 +388,10 @@ func TestStateStringOutput(t *testing.T) {
 
 func TestDebugFlag(t *testing.T) {
 	t.Parallel()
-	input := bytes.NewReader([]byte(""))
 	output := new(bytes.Buffer)
-	g := gmachine.NewWithInputAndOutput(input, output)
-	err := g.AssembleAndRunFromString("inca halt", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := AssembleAndRunFromString(t, "inca halt")
+	g.In = bytes.NewReader([]byte(""))
+	g.Out = output
 	got := output.String()
 	if !strings.HasPrefix(got, "P:") {
 		t.Errorf("Debug should start with %q", "P:")
@@ -463,6 +410,7 @@ func TestDebugger_DecodeInstruction(t *testing.T) {
 }
 
 func TestInvertMap(t *testing.T) {
+	t.Parallel()
 	testMap := map[string]int{"A": 1, "B": 2, "C": 3}
 	want := map[int]string{1: "A", 2: "B", 3: "C"}
 	got := gmachine.InvertMap(testMap)
@@ -485,6 +433,56 @@ func TestMain(m *testing.M) {
 	}))
 }
 
-func debug() {
-	os.Setenv(gmachine.TokenizeLogs, "true")
+func FuzzTokenize(f *testing.F) {
+	f.Add("NOOP HALT SETA 5")
+	f.Fuzz(func(t *testing.T, data string) {
+		got, err := gmachine.Tokenize(data)
+		if len(got) == 0 && err == nil && data != " " && data != "" {
+			t.Error("expected at least one token if no error is produced")
+		}
+	})
+}
+
+func AssembleAndRunFromFile(t *testing.T, filename string) *gmachine.Machine {
+	t.Helper()
+
+	g := gmachine.New()
+	g.Out = new(bytes.Buffer)
+	words, err := gmachine.AssembleFromFile(filename)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = g.Load(words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = g.Run(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return g
+}
+
+func AssembleAndRunFromString(t *testing.T, program string) *gmachine.Machine {
+	t.Helper()
+
+	g := gmachine.New()
+	g.Out = new(bytes.Buffer)
+	words, err := gmachine.Assemble(strings.NewReader(program))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = g.Load(words)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = g.Run(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return g
 }
