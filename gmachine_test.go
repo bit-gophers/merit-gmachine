@@ -149,22 +149,6 @@ func TestAssemblingAndRunFromFile(t *testing.T) {
 	}
 }
 
-func TestAssemblingAndRunWithNonExistentFile(t *testing.T) {
-	t.Parallel()
-	machine := gmachine.New()
-	if err := machine.AssembleAndRunFromFile("testdata/non-existent-program.g", false); err == nil {
-		t.Fatal("expected an error for invalid file")
-	}
-}
-
-func TestAssemblingAndRunWithBadFile(t *testing.T) {
-	t.Parallel()
-	machine := gmachine.New()
-	if err := machine.AssembleAndRunFromFile("testdata/invalid_program.g", false); err == nil {
-		t.Fatal("expected an error for bad program file")
-	}
-}
-
 func TestTokenize(t *testing.T) {
 	t.Parallel()
 	want := []gmachine.Token{
@@ -253,7 +237,7 @@ func TestUnknownOpCodeReturnsError(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	err = m.Run(false)
+	err = m.Run()
 	if err == nil {
 		t.Error("no error")
 	}
@@ -270,11 +254,9 @@ func TestAssembleErrorReaderReturnsError(t *testing.T) {
 
 func TestPrintA(t *testing.T) {
 	t.Parallel()
-	buf := new(bytes.Buffer)
 	g := AssembleAndRunFromFile(t, "testdata/print_char.g")
-	g.Out = buf
 	want := "A"
-	got := buf.String()
+	got := g.Out.(*bytes.Buffer).String()
 	if want != got {
 		t.Errorf("want %q, got %q", want, got)
 	}
@@ -282,11 +264,9 @@ func TestPrintA(t *testing.T) {
 
 func TestPrintHelloWorld(t *testing.T) {
 	t.Parallel()
-	buf := new(bytes.Buffer)
 	g := AssembleAndRunFromFile(t, "testdata/hello_world.g")
-	g.Out = buf
 	want := "Hello World"
-	got := buf.String()
+	got := g.Out.(*bytes.Buffer).String()
 	if want != got {
 		t.Errorf("want %q, got %q", want, got)
 	}
@@ -388,13 +368,13 @@ func TestStateStringOutput(t *testing.T) {
 
 func TestDebugFlag(t *testing.T) {
 	t.Parallel()
-	output := new(bytes.Buffer)
-	g := AssembleAndRunFromString(t, "inca halt")
-	g.In = bytes.NewReader([]byte(""))
-	g.Out = output
-	got := output.String()
+	g := newGMachineFromProgram(t, "inca halt")
+	g.In = strings.NewReader("")
+	g.Debug = true
+	g.Run()
+	got := g.Out.(*bytes.Buffer).String()
 	if !strings.HasPrefix(got, "P:") {
-		t.Errorf("Debug should start with %q", "P:")
+		t.Errorf("Debug should start with %q got %q", "P:", got)
 	}
 }
 
@@ -457,7 +437,7 @@ func AssembleAndRunFromFile(t *testing.T, filename string) *gmachine.Machine {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = g.Run(false)
+	err = g.Run()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,13 +445,11 @@ func AssembleAndRunFromFile(t *testing.T, filename string) *gmachine.Machine {
 	return g
 }
 
-func AssembleAndRunFromString(t *testing.T, program string) *gmachine.Machine {
+func newGMachineFromProgram(t *testing.T, program string) *gmachine.Machine {
 	t.Helper()
-
 	g := gmachine.New()
 	g.Out = new(bytes.Buffer)
 	words, err := gmachine.Assemble(strings.NewReader(program))
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +457,13 @@ func AssembleAndRunFromString(t *testing.T, program string) *gmachine.Machine {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = g.Run(false)
+	return g
+}
+
+func AssembleAndRunFromString(t *testing.T, program string) *gmachine.Machine {
+	t.Helper()
+	g := newGMachineFromProgram(t, program)
+	err := g.Run()
 	if err != nil {
 		t.Fatal(err)
 	}

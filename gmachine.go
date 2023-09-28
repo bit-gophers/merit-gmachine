@@ -64,6 +64,7 @@ type Machine struct {
 	Z             bool
 	Out           io.Writer
 	In            io.Reader
+	Debug         bool
 }
 
 func New() *Machine {
@@ -74,11 +75,14 @@ func New() *Machine {
 	}
 }
 
-func (g *Machine) Run(debug bool) error {
-	inReader := bufio.NewReader(g.In)
+func (g *Machine) Run() error {
+	var inReader *bufio.Reader
+	if g.Debug {
+		inReader = bufio.NewReader(g.In)
+	}
 
 	for {
-		if debug {
+		if g.Debug {
 			fmt.Fprint(g.Out, g.String())
 			inReader.ReadLine()
 		}
@@ -169,6 +173,7 @@ func MainRun() int {
 	debug := flag.Bool("debug", false, "If true print debug output")
 	flag.Parse()
 	g := New()
+	g.Debug = *debug
 	program, err := AssembleFromFile(flag.Arg(0))
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
@@ -179,7 +184,7 @@ func MainRun() int {
 		fmt.Fprint(os.Stderr, err)
 		return 1
 	}
-	err = g.Run(*debug)
+	err = g.Run()
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
 		return 1
