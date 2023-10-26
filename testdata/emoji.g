@@ -1,0 +1,4 @@
+// data
+SETA '💩'
+OUTA
+halt

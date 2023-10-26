@@ -1,13 +1,13 @@
 package gmachine_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"testing/iotest"
 
-	"fmt"
 	gmachine "github.com/bit-gophers/merit-gmachine"
 	"github.com/google/go-cmp/cmp"
-	"testing/iotest"
 )
 
 func TestAssembly(t *testing.T) {
@@ -17,6 +17,18 @@ func TestAssembly(t *testing.T) {
 		gmachine.Word(gmachine.OpHALT),
 	}
 	got, err := gmachine.Assemble(strings.NewReader("NOOP; halt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got))
+	}
+}
+
+func TestLabels(t *testing.T) {
+	t.Parallel()
+	want := []gmachine.Word{gmachine.Word(gmachine.OpJUMP), 2, 0}
+	got, err := gmachine.Assemble(strings.NewReader("JUMP main;main:"))
 	if err != nil {
 		t.Fatal(err)
 	}

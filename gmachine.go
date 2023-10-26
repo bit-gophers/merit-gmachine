@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -45,6 +46,8 @@ const (
 	TokenComment
 	TokenNumberLiteral
 	TokenRuneLiteral
+	TokenLabelDefinition
+	TokenLabelReference
 
 	eof rune = 0
 )
@@ -259,13 +262,17 @@ func newToken(rawToken []rune) (Token, error) {
 		if utf8.RuneCountInString(stringToken) == 3 && strings.HasPrefix(stringToken, "'") && strings.HasSuffix(stringToken, "'") {
 			tokenKind = TokenRuneLiteral
 			value = OpCode([]rune(stringToken)[1])
-		} else {
+		} else if unicode.IsDigit(rawToken[0]) {
 			tokenKind = TokenNumberLiteral
 			converted, err := strconv.Atoi(stringToken)
 			if err != nil {
 				return Token{}, fmt.Errorf("unknown instruction %q", string(rawToken))
 			}
 			value = OpCode(converted)
+		} else if strings.HasSuffix(stringToken, ":") {
+			tokenKind = TokenLabelDefinition
+		} else {
+			tokenKind = TokenLabelReference
 		}
 	}
 	return Token{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 func Assemble(input io.Reader) (program []Word, err error) {
@@ -17,6 +18,8 @@ func Assemble(input io.Reader) (program []Word, err error) {
 		return nil, err
 	}
 	argRequired := false
+	labelDefinitions := make(map[string]int)
+	labelReferences := make(map[string][]int)
 	for _, token := range tokens {
 		switch token.Kind {
 		case TokenComment:
@@ -28,10 +31,27 @@ func Assemble(input io.Reader) (program []Word, err error) {
 			argRequired = OpCode(token.Value).RequiresArgument()
 		case TokenRuneLiteral, TokenNumberLiteral:
 			argRequired = false
+		case TokenLabelReference:
+			argRequired = false
+			labelReferences[token.RawToken] = append(labelReferences[token.RawToken], len(program))
+		case TokenLabelDefinition:
+			argRequired = false
+			label := strings.TrimSuffix(token.RawToken, ":")
+			labelDefinitions[label] = len(program)
+			continue
 		default:
 			return nil, fmt.Errorf("line %d: unknown token kine %q", token.Line, token.Kind)
 		}
 		program = append(program, token.Value)
+	}
+	for label, references := range labelReferences {
+		definition, ok := labelDefinitions[label]
+		if !ok {
+			return nil, fmt.Errorf("undefined label %q", label)
+		}
+		for _, reference := range references {
+			program[reference] = Word(definition)
+		}
 	}
 	return program, nil
 }
@@ -161,6 +181,9 @@ func inToken(t *tokenizer) stateFunc {
 			return nil
 		case '\n', ' ', ';':
 			t.backup()
+			t.emit()
+			return wantToken
+		case ':':
 			t.emit()
 			return wantToken
 		case '\'':
